@@ -12,7 +12,9 @@ def dbfreader(f):
 
     """
     # See DBF format spec at:
-    #     http://www.pgts.com.au/download/public/xbase.htm#DBF_STRUCT
+    #    http://www.pgts.com.au/download/public/xbase.htm#DBF_STRUCT
+    # the above URL being deleted at auuthor's request, try instead:
+    #    http://www.clicketyclick.dk/databases/xbase/format/dbf.html#DBF_STRUCT
 
     numrec, lenheader = struct.unpack('<xxxxLH22x', f.read(32))    
     numfields = (lenheader - 33) // 32
@@ -39,7 +41,7 @@ def dbfreader(f):
         for (name, typ, size, deci), value in itertools.izip(fields, record):
             if name == 'DeletionFlag':
                 continue
-            if typ == "N":
+            if typ == 'N':
                 value = value.replace('\0', '').lstrip()
                 if value == '':
                     value = 0
@@ -51,7 +53,8 @@ def dbfreader(f):
                 y, m, d = int(value[:4]), int(value[4:6]), int(value[6:8])
                 value = datetime.date(y, m, d)
             elif typ == 'L':
-                value = (value in 'YyTt' and 'T') or (value in 'NnFf' and 'F') or '?'
+                value = (value in 'YyTt' and 'T') or (
+                         value in 'NnFf' and 'F') or '?'
             result.append(value)
         yield result
 
@@ -82,7 +85,8 @@ def dbfwriter(f, fieldnames, fieldspecs, records):
     numfields = len(fieldspecs)
     lenheader = numfields * 32 + 33
     lenrecord = sum(field[1] for field in fieldspecs) + 1
-    hdr = struct.pack('<BBBBLHH20x', ver, yr, mon, day, numrec, lenheader, lenrecord)
+    hdr = struct.pack('<BBBBLHH20x', ver, yr, mon, day,
+                                     numrec, lenheader, lenrecord)
     f.write(hdr)
                       
     # field specs
@@ -98,7 +102,7 @@ def dbfwriter(f, fieldnames, fieldspecs, records):
     for record in records:
         f.write(' ')                        # deletion flag
         for (typ, size, deci), value in itertools.izip(fieldspecs, record):
-            if typ == "N":
+            if typ == 'N':
                 value = str(value).rjust(size, ' ')
             elif typ == 'D':
                 value = value.strftime('%Y%m%d')
