@@ -9,8 +9,8 @@ http://indiemaps.com/blog/2008/03/easy-shapefile-loading-in-python/ .  See
 http://en.wikipedia.org/wiki/Shapefile for more information about the Shapefile
 format.
 
-This module is specialized to process the freely available US Census' TIGER/Line
-shapefile for all 5-digit ZTCAs in the US; see
+This module is somewhat-specialized to process the freely available US Census'
+TIGER/Line shapefile for all 5-digit ZTCAs in the US; see
 http://www.census.gov/geo/www/tiger/ for more information about TIGER/Line
 files.  The specialization (besides focusing only on shapefiles that hold
 polygons or polylines) lies in the choice of unique-identifier: in this module,
@@ -18,52 +18,132 @@ the attribute used as the unique identifier is the one named ZCTA5CE00, and the
 module only examines records where that identifier is made of all digits ("real"
 zipcodes as opposed to "synthetic" ones for water areas and land wilderness).
 
+This specialization can be countered (allowing the reading of any shapefile of
+polygons or polylines) by instantiating the Shp class with other explicit
+values of optional parameters id_field_name (str, default 'ZTCA5CE00') and/or
+id_field_check (callable, must return a false value for unacceptable IDs).
+
 The module assumes all bounding boxes are 4 doubles in order: xmin, ymin, xmax,
 ymax; AKA 2 points in order WN, ES; the module provides a utility function to
 make a bbox in that SHP-oriented format given the format that's more natural in
 KML &c, which is SW, NE, and an optional magnification around the box center.
 """
+import array
 import itertools
 import math
 import struct
 import dbfUtils
 
-XY_POINT_RECORD_LENGTH = 16
+
+# determine the endianness of the machine we're running on
+big_endian = struct.unpack('>i', struct.pack('=i', 23)) == (23,)
+# print 'Machine is', ('little', 'big')[big_endian], 'endian'
+
 
 def dobox(sw, ne, magnify=1.0):
-  h = ne[0] - sw[0]
-  w = ne[1] - sw[1]
+  """ Get xmin/ymin/xmax/ymax bounding box for given SW/NE + magnify-factor.
+
+  Args:
+    sw: tuple of 2 floats, (xmax, ymax)
+    ne: tuple of 2 floats, (xmin, ymin)
+    magnify: optional, float to enlarge the bbox by (default 1.0)
+  Returns:
+    tuple of 4 floats, xmin, ymin, xmax, ymax
+  """
+  # compute and check half-height and half-width of given bbox
+  h2 = (ne[0] - sw[0])/2
+  w2 = (ne[1] - sw[1])/2
   assert h>0 and w>0 and magnify>0
-  c0 = ne[0] + h/2
-  c1 = ne[1] + w/2
-  h *= magnify/2
-  w *= magnify/2
-  xmin = c1 - w
-  xmax = c1 + w
-  ymin = c0 - h
-  ymax = c0 + h
+  # compute center of bbox
+  c0 = ne[0] + h2
+  c1 = ne[1] + w2
+  h2 *= magnify
+  w2 *= magnify
+  xmin = c1 - w2
+  xmax = c1 + w2
+  ymin = c0 - h2
+  ymax = c0 + h2
   return xmin, ymin, xmax, ymax
 
-class shp(object):
 
-  def getid(self, record_number):
-    try: id = self.db[record_number-1][self._id_field]
-    except IndexError: return None
-    if not id.isdigit(): return None
+def read_and_unpack(fp, fmt):
+  """ Read bytes from file and unpack according to given format.
+
+  Args:
+    fp: file-like object (should be open for binary reading)
+    fmt: format string for struct.unpack
+  Returns:
+    tuple of results according to fmt
+  """
+  n = struct.calcsize(fmt)
+  return struct.unpack(fmt, fp.read(n))
+
+
+def read_some(fp, typecode, n):
+  """ Read bytes from file and unpack as little-endian w/given typecode.
+
+  Args:
+    fp: file-like object (should be open for binary reading)
+    typecode: string of length 1, an array.array typecode
+    n: number of items (not bytes!) to read
+  Returns:
+    array.array of given typecode and a length of n items.
+  """
+  data = array.array(typecode)
+  data.fromfile(fp, n)
+  if big_endian: data.byteswap()
+  return data
+
+def read_doubles(fp, nd): return read_some(fp, 'd', nd)
+def read_ints(fp, ni): return read_some(fp, 'i', ni)
+def read_one(fp, typecode): return read_some(fp, typecode, 1)[0]
+
+
+class Shp(object):
+
+  def get_id(self, record_number):
+    """ Get and check the ID attribute for record of a given number (1 and up)
+
+    Args:
+      record number: int >=1, the record number
+    Returns:
+      False if record_number is higher than the number of records in the file
+      None if the given record's ID does not satisfy the check
+      otherwise, str with the ID attribute for the record
+    """
+    try: id = self._db[record_number-1][self._id_field]
+    except IndexError: return False
+    if not self._id_check(id): return None
     return id
 
-  def __init__(self, filename, id_field_name='ZTCA5CE00'):
+  def all_out(self, bb):
+    """ Check if a bounding box is entirely outside the select-bbox (if any)
+
+    Args:
+      bb: bounding box to check (xmin, ymin, xmax, ymax)
+    Returns:
+      True ifd self has a select-bbox and bb lies entirely outside of it
+    """
+    cb = self.select_bbox
+    if cb is None: return False
+    return bb[0]>cb[2] or bb[2]<cb[0] or bb[1]>cb[3] or bb[3]<cb[1]
+
+  def __init__(self, filename, select_bbox=None,
+      id_field_name='ZTCA5CE00', id_check=lambda id: id.isdigit()):
     # get basic shapefile configuration
     fp = self.fp = open(filename, 'rb')
     fp.seek(32)
-    shp_type = readAndUnpack('i', fp.read(4))
+    shp_type = read_one(fp, 'i')
     if shp_type not in (3, 5):
       msg = 'SHP file %r shapetype %r, not 3 or 5' % (filename, shp_type)
       raise ValueError, msg
-    self.overall_bbox = readBoundingBox(fp)
-    self.select_bbox = None
+    self.overall_bbox = read_doubles(fp, 4)
+    self.select_bbox = select_bbox
+    if self.all_out(self.overall_bbox):
+      msg = 'SHP file %r bbox %s out of select bbox %s' % (filename,
+          showbb(self.overall_bbox), select_bbox)
     # position at first record
-    fp.seek(100)
+    self.rewind()
 
     # open dbf file and get records as a list
     dbf_file = filename[:-4] + '.dbf'
@@ -71,7 +151,7 @@ class shp(object):
       dbr = dbfUtils.dbfreader(dbf)
       field_names = dbr.next()
       field_specs = dbr.next()
-      self.db = list(dbr)
+      self._db = list(dbr)
     # identify index unique-ID field
     for i, field_name in enumerate(field_names):
       if field_name == id_field_name: break
@@ -79,10 +159,28 @@ class shp(object):
       msg = 'DBF file %r has no field named %r' % (dbf_file, id_field_name)
       raise ValueError, msg
     self._id_field = i
+    self._id_check = id_check
 
-  def set_select_bbox(self, bbox):
-    
+  def __length__(self):
+    return len(self._db)
 
+  def __iter__(self):
+    return self
+
+  def rewind(self):
+    """ Re-start reading the shapefile from the first record.
+    """
+    self.fp.seek(100)
+    self._last_read = None
+
+  @property
+  def last_read(self):
+    return self._last_read
+
+  def close(self):
+    """ Close the shapefile.
+    """
+    self.fp.close()
 
   # fetch Records
   fp.seek(100)
