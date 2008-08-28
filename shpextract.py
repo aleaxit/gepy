@@ -24,7 +24,7 @@ values of optional parameters id_field_name (str, default 'ZTCA5CE00') and/or
 id_field_check (callable, must return a false value for unacceptable IDs).
 
 The module assumes all bounding boxes are 4 doubles in order: xmin, ymin, xmax,
-ymax; AKA 2 points in order WN, ES; the module provides a utility function to
+ymax; AKA 2 points in order WS, EN; the module provides a utility function to
 make a bbox in that SHP-oriented format given the format that's more natural in
 KML &c, which is SW, NE, and an optional magnification around the box center.
 """
@@ -44,15 +44,15 @@ def dobox(sw, ne, magnify=1.0):
   """ Get xmin/ymin/xmax/ymax bounding box for given SW/NE + magnify-factor.
 
   Args:
-    sw: tuple of 2 floats, (xmax, ymax)
-    ne: tuple of 2 floats, (xmin, ymin)
+    sw: tuple of 2 floats, (ymax, xmax) [the "SW" LatLong point]
+    ne: tuple of 2 floats, (ymin, xmin) [the "NE" LatLong point]
     magnify: optional, float to enlarge the bbox by (default 1.0)
   Returns:
-    tuple of 4 floats, xmin, ymin, xmax, ymax
+    tuple of 4 floats, xmin, ymin, xmax, ymax (aka W, S, E, N)
   """
   # compute and check half-height and half-width of given bbox
-  h2 = (ne[0] - sw[0])/2
-  w2 = (ne[1] - sw[1])/2
+  h2 = (sw[0] - ne[0])/2
+  w2 = (sw[1] - ne[1])/2
   assert h>0 and w>0 and magnify>0
   # compute center of bbox
   c0 = ne[0] + h2
@@ -161,85 +161,86 @@ class Shp(object):
     self._id_field = i
     self._id_check = id_check
 
+    # try building an ID -> byte offset mapping if the .SHX file is present
+    shx_file = filename[:-4] + '.shx')
+    try:
+      f = open(shx_file, 'rb')
+    except IOError:
+      self._by_id = None
+      self._by_recno = None
+      self._len = sum(1 for x in self._db if self._id_check(x))
+    else:
+      self._by_id = {}
+      self._by_recno = {}
+      with contextlib.closing(f):
+        f.seek(100)
+	shx_offsets_and_lengths = read_ints(f, 2*len(self._db))
+	for id, offs in zip(self._db, shx_offsets_and_lengths[0::2]):
+	  if not self._id_check(id): continue
+	  self._by_id[id] = 2*offs
+	  self._by_recno[recno] = 2*offs
+	self._len = len(self._by_id)
+
   def __length__(self):
-    return len(self._db)
+    return self._len
 
   def __iter__(self):
     return self
 
+  def _seek_to(self, offs):
+    self.fp.seek(offs)
+    self._last_read_id = None
+    self._last_read_recno = None
+
   def rewind(self):
     """ Re-start reading the shapefile from the first record.
     """
-    self.fp.seek(100)
-    self._last_read = None
+    self._seek_to(100)
+
+  def set_next_id(self, id):
+    if not self._id_check(id):
+      raise ValueError, 'Invalid ID %r' % id
+    elif self._by_id is None:
+      raise AttributeError, 'SHX was not present, SHP not indexable'
+    elif id not in self._by_id:
+      raise KeyError, 'ID %r not in index' % id
+    self._seek_to(self._by_id[id])
+
+  def set_next_recno(self, recno):
+    if recno<1:
+      raise ValueError, 'Invalid recno %r' % recno
+    elif self._by_recno is None:
+      raise AttributeError, 'SHX was not present, SHP not indexable'
+    elif recno not in self._by_recno:
+      raise IndexError, 'Record # %r not in index' % recno
+    self._seek_to(self._by_recno[recno])
 
   @property
-  def last_read(self):
-    return self._last_read
+  def last_read_id(self):
+    return self._last_read_id
+
+  @property
+  def last_read_recno(self):
+    return self._last_read_recno
 
   def close(self):
     """ Close the shapefile.
     """
     self.fp.close()
 
-  # fetch Records
-  fp.seek(100)
-  nr = 0
-  while True:
-    shp_record = createRecord(fp)
-    if shp_record is None:
-      # print 'none'
-      continue
-    elif shp_record == False:
-      # print 'break'
-      break
-    # print 'nr:', nr
     records.append(shp_record)
     nr += 1
     if maxn is not None and nr >= maxn:
       break
 
-  return records
+  # TODO: finish it up from here
+  def get_next_record(self, id=1, recno=0, bbox=0, data=1):
+    result = []
+    the_recno = read_and_unpack(self._fp, '>L')
+    the_id = self.get_id(the_recno)
+    if not the_id: return the_id
 
-
-def loadShapefileIntersecting(file_name, (y0, x0, y1, x1), maxn=None):
-  global db
-  shp_bounding_box = []
-  shp_type = 0
-  file_name = file_name
-  records = []
-  # open dbf file and get all records as a list
-  dbf_file = file_name[0:-4] + '.dbf'
-  dbf = open(dbf_file, 'rb')
-  db = list(dbfUtils.dbfreader(dbf))
-  dbf.close()
-  print 'Read %d records from DBF file' % len(db)
-
-  fp = open(file_name, 'rb')
-
-  # get basic shapefile configuration
-  fp.seek(32)
-  shp_type = readAndUnpack('i', fp.read(4))
-  shp_bounding_box = readBoundingBox(fp)
-  global bb
-  bb = (x0, x1, y0, y1)
-
-  # fetch Records
-  fp.seek(100)
-  nr = 0
-  while True:
-    shp_record = createRecord(fp)
-    if shp_record is None:
-      # print 'none'
-      continue
-    elif shp_record == False:
-      # print 'break'
-      break
-    print 'nr:', nr
-    records.append(shp_record)
-    nr += 1
-    if maxn is not None and nr >= maxn:
-      break
+    
 
   return records
 
