@@ -239,7 +239,7 @@ class Shp(object):
           showbb(self.overall_bbox), showbb(select_bbox))
       raise StopIteration, msg
     self._select_bbox = select_bbox
-    
+
   def __init__(self, filename, select_bbox=None,
       id_field_name='ZTCA5CE00', id_check=str.isdigit):
     """ Collect relevant info from .SHP, .DBF and .SHX files in the shapefile.
@@ -259,6 +259,24 @@ class Shp(object):
                  if the DBF has no attribute with the name given for the ID
       StopIteration if the shapefile's bbox doesn't interest the select one, or
                     if no record has a "good" id
+    """
+    """ Collect relevant info from .SHP, .DBF and .SHX files in the shapefile.
+
+    Keeps the .SHP file open, but the info from the .DBF (and .SHX, if present)
+    is kept in memory instead.
+
+    Args:
+      filename: path to the .shp file, including the extension
+                .dbf (and .shx if any) must have the same dir & basename
+      select_bbox: if not None, only records interescting this box matter
+      id_field_name: the name of the DBF attribute which identifies records
+      id_check: callable with one arg (an id) returning true for "good" ids
+    Raises:
+      IOError (propagated) for missing .shp or .dbf files
+      ValueError if the shape type is anything but 3 or 5 (poly lines/gons)
+      ValueError if the DBF has no attribute with the name given for the ID
+      StopIteration if the shapefile's bbox doesn't interest the select one
+      StopIteration if no record has a "good" id
     """
     # get basic shapefile configuration
     self.filename = filename
@@ -317,6 +335,7 @@ class Shp(object):
       raise StopIteration, "No record ID passes the id-check function"
 
   def __len__(self):
+    """ Returns the number of records with valid IDs. """
     """ Returns the number of records with valid IDs. """
     return self._len
 
@@ -426,8 +445,8 @@ class Shp(object):
       if recno: result.append(the_recno)
       if bbox: result.append(the_bbox)
       if data or datalen:
-	# data needed, let's get it
-	numparts, numpoints = read_and_unpack(self._fp, '<II')
+        # data needed, let's get it
+        numparts, numpoints = read_and_unpack(self._fp, '<II')
         if datalen: result.append(numpoints)
         if data:
           # identify lengths of parts
@@ -456,4 +475,3 @@ def _test():
 
 if __name__ == "__main__":
     _test()
-
