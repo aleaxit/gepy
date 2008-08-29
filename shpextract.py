@@ -35,6 +35,7 @@ KML &c, which is (latlong) SW, NE, and an optional magnification around the box 
 """
 import array
 import contextlib
+import doctest
 import struct
 import dbfUtils
 
@@ -47,6 +48,16 @@ big_endian = struct.unpack('>i', struct.pack('=i', 23)) == (23,)
 def dobox(sw, ne, magnify=1.0):
   """ Get xmin/ymin/xmax/ymax bounding box for given SW/NE + magnify-factor.
 
+  >>> dobox((6,8), (2,4), 1)
+  (4, 2, 8, 6)
+  >>> dobox((16,18), (12,14), 3)
+  (10, 8, 22, 20)
+  >>> dobox((1, 2), (3, 4), 5)
+  Traceback (most recent call last):
+     ...
+  AssertionError
+  >>>
+
   Args:
     sw: tuple of 2 floats, (ymax, xmax) [the "SW" LatLong point]
     ne: tuple of 2 floats, (ymin, xmin) [the "NE" LatLong point]
@@ -57,7 +68,7 @@ def dobox(sw, ne, magnify=1.0):
   # compute and check half-height and half-width of given bbox
   h2 = (sw[0] - ne[0]) / 2
   w2 = (sw[1] - ne[1]) / 2
-  assert h>0 and w>0 and magnify>0
+  assert h2>0 and w2>0 and magnify>0
   # compute center of bbox
   c0 = ne[0] + h2
   c1 = ne[1] + w2
@@ -74,6 +85,12 @@ def dobox(sw, ne, magnify=1.0):
 def showbb(dbls):
   """ Format some floats to a string with small display precision.
 
+  >>> showbb([])
+  ''
+  >>> showbb(range(3))
+  '   0.0000    1.0000    2.0000'
+  >>>
+
   Args:
     dbls: a sequence of numbers
   Returns:
@@ -84,6 +101,14 @@ def showbb(dbls):
 
 def read_and_unpack(fp, fmt):
   """ Read bytes from file and unpack according to given format.
+
+  >>> import StringIO
+  >>> s = StringIO.StringIO()
+  >>> s.write(struct.pack('<I', 23))
+  >>> s.seek(0)
+  >>> read_and_unpack(s, '<I')
+  (23,)
+  >>>
 
   Args:
     fp: file-like object (should be open for binary reading)
@@ -98,8 +123,16 @@ def read_and_unpack(fp, fmt):
 def read_some(fp, typecode, n):
   """ Read bytes from file and unpack *as little-endian* w/given typecode.
 
+  >>> import tempfile
+  >>> f = tempfile.TemporaryFile()
+  >>> f.write(struct.pack('<III', 23, 45, 67))
+  >>> f.seek(0)
+  >>> list(read_some(f, 'i', 3))
+  [23, 45, 67]
+  >>>
+
   Args:
-    fp: file-like object (should be open for binary reading)
+    fp: actual file object (should be open for binary reading)
     typecode: string of length 1, an array.array typecode
     n: number of items (not bytes!) to read
   Returns:
@@ -110,9 +143,63 @@ def read_some(fp, typecode, n):
   if big_endian: data.byteswap()
   return data
 
-def read_doubles(fp, nd): return read_some(fp, 'd', nd)
-def read_ints(fp, ni): return read_some(fp, 'i', ni)
-def read_one(fp, typecode): return read_some(fp, typecode, 1)[0]
+def read_doubles(fp, nd):
+  """ Read bytes from fil and unpack as little-endian doubles.
+
+  >>> import tempfile
+  >>> f = tempfile.TemporaryFile()
+  >>> f.write(struct.pack('<ddd', 2.3, 4.5, 6.7))
+  >>> f.seek(0)
+  >>> xs = read_doubles(f, 3)
+  >>> ['%3.1f'%x for x in xs]
+  ['2.3', '4.5', '6.7']
+  >>>
+
+  Args:
+    fp: actual file object (should be open for binary reading)
+    n: number of doubles to read
+  Returns:
+    array.array of doubles with a length of n items.
+  """
+  return read_some(fp, 'd', nd)
+
+def read_ints(fp, ni):
+  """ Read bytes from fil and unpack as little-endian ints.
+
+  >>> import tempfile
+  >>> f = tempfile.TemporaryFile()
+  >>> f.write(struct.pack('<iii', 23, 45, 67))
+  >>> f.seek(0)
+  >>> list(read_ints(f, 3))
+  [23, 45, 67]
+  >>>
+
+  Args:
+    fp: actual file object (should be open for binary reading)
+    n: number of ints to read
+  Returns:
+    array.array of ints with a length of n items.
+  """
+  return read_some(fp, 'i', ni)
+
+def read_one(fp, typecode):
+  """ Read bytes from file and unpack *as little-endian* w/given typecode.
+
+  >>> import tempfile
+  >>> f = tempfile.TemporaryFile()
+  >>> f.write(struct.pack('<I', 234567))
+  >>> f.seek(0)
+  >>> read_one(f, 'i')
+  234567
+  >>>
+
+  Args:
+    fp: actual file object (should be open for binary reading)
+    typecode: string of length 1, an array.array typecode
+  Returns:
+    a single scalar of the specified type
+  """
+  return read_some(fp, typecode, 1)[0]
 
 
 class Shp(object):
@@ -286,7 +373,7 @@ class Shp(object):
   # read-only properties for important internal attributes
   for _at in 'last_read_id last_read_recno select_bbox'.split():
     locals()[_at] = property(
-        lambda self, _at=_at: return getattr(self, '_'+_at))
+        lambda self, _at=_at: getattr(self, '_'+_at))
   del _at
 
   def close(self):
@@ -357,4 +444,14 @@ class Shp(object):
     result = self.get_next_record()
     if result is None: raise StopIteration
     else: return result
+
+
+def _test():
+    numfailures, numtests = doctest.testmod()
+    if numfailures == 0:
+      print '%d tests passed successfully' % numtests
+    # if there are any failures, doctest does its own reporting!-)
+
+if __name__ == "__main__":
+    _test()
 
