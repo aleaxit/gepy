@@ -127,23 +127,31 @@ class Shp(object):
       None if the given record's ID does not satisfy the check
       otherwise, str with the ID attribute for the record
     """
-    try: id = self._db[record_number-1][self._id_field]
+    try: id = self._db[record_number-1]
     except IndexError: return False
     if not self._id_check(id): return None
     return id
 
-  def all_out(self, bb):
+  def all_out(self, bb, cb=None):
     """ Check if a bounding box is entirely outside the select-bbox (if any)
 
     Args:
       bb: bounding box to check (xmin, ymin, xmax, ymax)
+      cb: the select box (None, default, means to use self._select_bbox)
     Returns:
       True ifd self has a select-bbox and bb lies entirely outside of it
     """
-    cb = self.select_bbox
+    if cb is None: cb = self._select_bbox
     if cb is None: return False
     return bb[0] > cb[2] or bb[2] < cb[0] or bb[1] > cb[3] or bb[3] < cb[1]
 
+  def set_bbox(self, select_bbox):
+    if select_bbox is not None and self.all_out(self.overall_bbox, select_bbox):
+      msg = 'SHP file %r bbox %s out of select bbox %s' % (self.filename,
+          showbb(self.overall_bbox), showbb(select_bbox))
+      raise StopIteration, msg
+    self._select_bbox = select_bbox
+    
   def __init__(self, filename, select_bbox=None,
       id_field_name='ZTCA5CE00', id_check=str.isdigit):
     """ Collect relevant info from .SHP, .DBF and .SHX files in the shapefile.
@@ -165,6 +173,7 @@ class Shp(object):
                     if no record has a "good" id
     """
     # get basic shapefile configuration
+    self.filename = filename
     fp = self._fp = open(filename, 'rb')
     fp.seek(32)
     shp_type = read_one(fp, 'i')
@@ -172,11 +181,8 @@ class Shp(object):
       msg = 'SHP file %r shapetype %r, not 3 or 5' % (filename, shp_type)
       raise ValueError, msg
     self.overall_bbox = read_doubles(fp, 4)
-    self.select_bbox = select_bbox
-    if self.all_out(self.overall_bbox):
-      msg = 'SHP file %r bbox %s out of select bbox %s' % (filename,
-          showbb(self.overall_bbox), showbb(select_bbox))
-      raise StopIteration, msg
+    self.set_select_bbox(select_bbox)
+
     # position at first record
     self.rewind()
 
@@ -194,7 +200,7 @@ class Shp(object):
     else:
       msg = 'DBF file %r has no field named %r' % (dbf_file, id_field_name)
       raise ValueError, msg
-    self._id_field = i
+    self._db = [entry[i] for entry in self._db]
     self._id_check = id_check
 
     # try building an ID -> byte offset mapping if the .SHX file is present
@@ -205,7 +211,7 @@ class Shp(object):
       # survive missing .SHX file (no indexing in this case, though)
       self._by_id = None
       self._by_recno = None
-      self._len = sum(1 for x in self._db if self._id_check(x))
+      self._len = sum(1 for id in self._db if self._id_check(id))
     else:
       self._by_id = {}
       self._by_recno = {}
@@ -215,9 +221,8 @@ class Shp(object):
         shx_offsets_and_lengths.byteswap()
         for recno, (id, offs) in enumerate(
             zip(self._db, shx_offsets_and_lengths[0::2])):
-          theid = id[self._id_field]
-          if not self._id_check(theid): continue
-          self._by_id[theid] = self._by_recno[recno+1] = 2*offs
+          if not self._id_check(id): continue
+          self._by_id[id] = self._by_recno[recno+1] = 2*offs
         self._len = len(self._by_id)
     if not self._len:
       raise StopIteration, "No record ID passes the id-check function"
@@ -278,17 +283,11 @@ class Shp(object):
     """
     self._set_next(recno, 'Record Number', lambda x: x>=1, self._by_recno)
 
-  @property
-  def last_read_id(self):
-    """ Read-only property: the ID of the last record read or None
-    """
-    return self._last_read_id
-
-  @property
-  def last_read_recno(self):
-    """ Read-only property: the record number of the last record read or None
-    """
-    return self._last_read_recno
+  # read-only properties for important internal attributes
+  for _at in 'last_read_id last_read_recno select_bbox'.split():
+    locals()[_at] = property(
+        lambda self, _at=_at: return getattr(self, '_'+_at))
+  del _at
 
   def close(self):
     """ Close the shapefile. """
