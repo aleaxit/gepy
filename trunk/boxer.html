@@ -1,0 +1,59 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"
+  xmlns:v="urn:schemas-microsoft-com:vml">
+
+ <head>
+   <meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+   <title>Find the map-view for a bounding-box</title>
+   <script src="http://maps.google.com/maps?file=api&amp;v=2&amp;key=ABQIAAAAQM4ndGoq1nYAUPZHcylyPxRXZUiqoPzi4rPMxrmvS7q0_f9NvRQPZi-d7Svg4r5cQkT5Ge_Wt7PMMA"
+     type="text/javascript"></script>
+   <script type="text/javascript">
+   //<![CDATA[
+
+  function load() {
+    if (GBrowserIsCompatible()) {
+      var map = new GMap2(document.getElementById("map_canvas"));
+      map.setCenter(new GLatLng(37.4419, -122.1419), 13);
+      map.addControl(new GLargeMapControl());
+      function twofloats(lat, lon) {
+        return '(' + lat.toFixed(5) + ',' +
+                     lon.toFixed(5) + ')';
+      }
+      function sholatlon(latlon) {
+        return twofloats(latlon.lat(), latlon.lng());
+      }
+      function report() {
+        var bounds = map.getBounds();
+        var sw = bounds.getSouthWest();
+        document.getElementById("sw").innerHTML = sholatlon(sw);
+        var ne = bounds.getNorthEast();
+        document.getElementById("ne").innerHTML = sholatlon(ne);
+        var ct = bounds.getCenter();
+        document.getElementById("ct").innerHTML = sholatlon(ct);
+        sizes = twofloats(ne.lat()-sw.lat(), ne.lng()-sw.lng());
+        document.getElementById("sizes").innerHTML = sizes;
+        zoom = map.getZoom();
+        document.getElementById("zoom").innerHTML = zoom.toString();
+      }
+      report()
+
+      GEvent.addListener(map, "moveend", report);
+     }
+   }
+
+   //]]>
+   </script>
+ </head>
+ <body onload="load()" onunload="GUnload()">
+   <div id="map_canvas" style="width: 700px; height: 500px"></div>
+   <p>
+   CT = <span id="ct">center</span>  
+   SW = <span id="sw">southwest</span> 
+   NE = <span id="ne">northeast</span> <br>
+   sizes = <span id="sizes">sizes</span>
+   zoom = <span id="zoom">zoom</span>
+   </p>
+ </body>
+</html>
+
