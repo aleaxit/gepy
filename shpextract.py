@@ -260,24 +260,6 @@ class Shp(object):
       StopIteration if the shapefile's bbox doesn't interest the select one, or
                     if no record has a "good" id
     """
-    """ Collect relevant info from .SHP, .DBF and .SHX files in the shapefile.
-
-    Keeps the .SHP file open, but the info from the .DBF (and .SHX, if present)
-    is kept in memory instead.
-
-    Args:
-      filename: path to the .shp file, including the extension
-                .dbf (and .shx if any) must have the same dir & basename
-      select_bbox: if not None, only records interescting this box matter
-      id_field_name: the name of the DBF attribute which identifies records
-      id_check: callable with one arg (an id) returning true for "good" ids
-    Raises:
-      IOError (propagated) for missing .shp or .dbf files
-      ValueError if the shape type is anything but 3 or 5 (poly lines/gons)
-      ValueError if the DBF has no attribute with the name given for the ID
-      StopIteration if the shapefile's bbox doesn't interest the select one
-      StopIteration if no record has a "good" id
-    """
     # get basic shapefile configuration
     self.filename = filename
     fp = self._fp = open(filename, 'rb')
@@ -335,7 +317,6 @@ class Shp(object):
       raise StopIteration, "No record ID passes the id-check function"
 
   def __len__(self):
-    """ Returns the number of records with valid IDs. """
     """ Returns the number of records with valid IDs. """
     return self._len
 
