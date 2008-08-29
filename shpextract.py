@@ -37,6 +37,7 @@ import array
 import contextlib
 import doctest
 import struct
+import sys
 import dbfUtils
 
 
@@ -232,7 +233,7 @@ class Shp(object):
     if cb is None: return False
     return bb[0] > cb[2] or bb[2] < cb[0] or bb[1] > cb[3] or bb[3] < cb[1]
 
-  def set_bbox(self, select_bbox):
+  def set_select_bbox(self, select_bbox):
     if select_bbox is not None and self.all_out(self.overall_bbox, select_bbox):
       msg = 'SHP file %r bbox %s out of select bbox %s' % (self.filename,
           showbb(self.overall_bbox), showbb(select_bbox))
@@ -281,6 +282,7 @@ class Shp(object):
       field_specs = dbr.next()
       self._db = list(dbr)
     # identify index unique-ID field
+    # print>>sys.stderr, 'all fields', field_names
     for i, field_name in enumerate(field_names):
       # print 'field:', field_name
       if field_name == id_field_name: break
