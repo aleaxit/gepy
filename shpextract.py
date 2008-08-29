@@ -34,8 +34,7 @@ make a bbox in that SHP-oriented format given the format that's more natural in
 KML &c, which is (latlong) SW, NE, and an optional magnification around the box center.
 """
 import array
-import itertools
-import math
+import contextlib
 import struct
 import dbfUtils
 
@@ -190,6 +189,7 @@ class Shp(object):
       self._db = list(dbr)
     # identify index unique-ID field
     for i, field_name in enumerate(field_names):
+      # print 'field:', field_name
       if field_name == id_field_name: break
     else:
       msg = 'DBF file %r has no field named %r' % (dbf_file, id_field_name)
@@ -212,14 +212,17 @@ class Shp(object):
       with contextlib.closing(f):
         f.seek(100)
         shx_offsets_and_lengths = read_ints(f, 2*len(self._db))
-        for id, offs in zip(self._db, shx_offsets_and_lengths[0::2]):
-          if not self._id_check(id): continue
-          self._by_id[id] = self._by_recno[recno] = 2*offs
+        shx_offsets_and_lengths.byteswap()
+        for recno, (id, offs) in enumerate(
+            zip(self._db, shx_offsets_and_lengths[0::2])):
+          theid = id[self._id_field]
+          if not self._id_check(theid): continue
+          self._by_id[theid] = self._by_recno[recno+1] = 2*offs
         self._len = len(self._by_id)
     if not self._len:
       raise StopIteration, "No record ID passes the id-check function"
 
-  def __length__(self):
+  def __len__(self):
     """ Returns the number of records with valid IDs. """
     return self._len
 
@@ -246,8 +249,9 @@ class Shp(object):
       raise ValueError, 'Invalid %s: %r' % (keyname, key)
     elif offs_dict is None:
       raise AttributeError, 'SHX was not present, SHP not indexable'
-    try: self._seek_to(offs_dict[id])
+    try: offs = offs_dict[key]
     except KeyError: raise KeyError, '%s %r not in index' % (keyname, key)
+    else: self._seek_to(offs)
 
   def set_next_id(self, id):
     """ Seek the SHP file to just before a record with the given ID.
@@ -272,7 +276,7 @@ class Shp(object):
       KeyError if there is no record with the requested record number
         (record number too high, or record w/that number has bad id)
     """
-    self._set_next(recno, 'Record Number', (1).__gt__, self._by_recno)
+    self._set_next(recno, 'Record Number', lambda x: x>=1, self._by_recno)
 
   @property
   def last_read_id(self):
@@ -290,7 +294,7 @@ class Shp(object):
     """ Close the shapefile. """
     self._fp.close()
 
-  def get_next_record(self, id=1, recno=0, bbox=0, data=1):
+  def get_next_record(self, id=1, recno=0, bbox=0, datalen=0, data=1):
     """ Get the next record (if any) with good ID and bounding-box.
 
     Returns a list with any or all of id, recno, bbox, and data, as requested.
@@ -300,15 +304,18 @@ class Shp(object):
       id: bool (default True), should result include the record ID?
       recno: bool (default False), should result include the record number?
       bbox: bool (default False), should result include the record bbox?
-      data: book (default True), should result include the record data?
+      datalen: bool (default False), should result include the tot len of data?
+      data: bool (default True), should result include the record data?
     Returns:
       None if no succeeding record is acceptable, else a list with all
         the requested info; data, if requested, is given as 1+ array.array's
         of doubles, in long/lat/long/lat/... order.
     """
     while True:
-      try: the_recno, reclen_words = read_and_unpack(self._fp, '>L>L')
-      except struct.error: return None
+      try: the_recno, reclen_words = read_and_unpack(self._fp, '>LL')
+      except struct.error:
+        # print 'EOF on', self._fp, 'at offset', self._fp.tell()
+        return None
       endrec = self._fp.tell() + 2*reclen_words
       the_id = self.get_id(the_recno)
       if the_id is None:
@@ -317,53 +324,38 @@ class Shp(object):
       elif the_id is False:
         msg = 'Internal error at rec %r: no id?' % the_recno
         raise SyntaxError, msg
+      shapetype = read_one(self._fp, 'i')
+      assert shapetype in (3, 5)
       the_bbox = read_doubles(self._fp, 4)
       if self.all_out(the_bbox):
         self._fp.seek(endrec)
         continue
       # record OK, prepare and return result
+      self._last_read_id = the_id
+      self._last_read_recno = the_recno
       result = []
       if id: result.append(the_id)
       if recno: result.append(the_recno)
       if bbox: result.append(the_bbox)
-      if not data:
-        self._fp.seek(endrec)
-        return result
-      # data needed, let's get it
-      # TODO: finish from here
+      if data or datalen:
+	# data needed, let's get it
+	numparts, numpoints = read_and_unpack(self._fp, '<II')
+        if datalen: result.append(numpoints)
+        if data:
+          # identify lengths of parts
+          parts_begin = list(read_ints(self._fp, numparts))
+          parts_length = [nx-th for nx,th in zip(parts_begin[1:]+[numpoints],
+                                                 parts_begin)]
+          # print '#parts=', numparts, '#pts=', numpoints,
+          # print 'ptb=', parts_begin, 'ptl=', parts_length
+          # read and append to result each part
+          for onepart in parts_length:
+            result.append(read_doubles(self._fp, 2*onepart))
+      self._fp.seek(endrec)
+      return result
 
-
-def readRecordPolyLine(fp, nexter):
-  data = readBoundingBox(fp)
-  if not intersect(data):
-    fp.seek(nexter)
-    return None
-  data['numparts']  = readAndUnpack('i', fp.read(4))
-  data['numpoints'] = readAndUnpack('i', fp.read(4))
-  data['parts'] = []
-  for i in range(0, data['numparts']):
-    data['parts'].append(readAndUnpack('i', fp.read(4)))
-  points_initial_index = fp.tell()
-  points_read = 0
-  for part_index in range(0, data['numparts']):
-    point_index = data['parts'][part_index]
-
-    # if(!isset(data['parts'][part_index]['points']) or !is_array(data['parts'][part_index]['points'])):
-    data['parts'][part_index] = {}
-    data['parts'][part_index]['points'] = []
-
-    # while( ! in_array( points_read, data['parts']) and points_read < data['numpoints'] and !feof(fp)):
-    checkPoint = []
-    while (points_read < data['numpoints']):
-      currPoint = readRecordPoint(fp)
-      data['parts'][part_index]['points'].append(currPoint)
-      points_read += 1
-      if points_read == 0 or checkPoint == []:
-        checkPoint = currPoint
-      elif currPoint == checkPoint:
-        checkPoint = []
-        break
-
-  fp.seek(points_initial_index + (points_read * XY_POINT_RECORD_LENGTH))
-  return data
+  def __next__(self):
+    result = self.get_next_record()
+    if result is None: raise StopIteration
+    else: return result
 
