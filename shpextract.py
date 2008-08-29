@@ -442,7 +442,7 @@ class Shp(object):
       self._fp.seek(endrec)
       return result
 
-  def __next__(self):
+  def next(self):
     result = self.get_next_record()
     if result is None: raise StopIteration
     else: return result
