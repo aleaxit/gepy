@@ -20,8 +20,17 @@
         return '(' + lat.toFixed(5) + ',' +
                      lon.toFixed(5) + ')';
       }
+      function fourfloats(x, y, z, t) {
+        return x.toFixed(5) + ' ' +
+               y.toFixed(5) + ' ' +
+               z.toFixed(5) + ' ' +
+               t.toFixed(5);
+      }
       function sholatlon(latlon) {
         return twofloats(latlon.lat(), latlon.lng());
+      }
+      function shobb(sw, ne) {
+        return fourfloats(sw.lat(), sw.lng(), ne.lat(), ne.lng());
       }
       function report() {
         var bounds = map.getBounds();
@@ -31,10 +40,15 @@
         document.getElementById("ne").innerHTML = sholatlon(ne);
         var ct = bounds.getCenter();
         document.getElementById("ct").innerHTML = sholatlon(ct);
-        sizes = twofloats(ne.lat()-sw.lat(), ne.lng()-sw.lng());
+        var w = ne.lat()-sw.lat();
+        var h = ne.lng()-sw.lng();
+        var sizes = twofloats(w, h);
         document.getElementById("sizes").innerHTML = sizes;
-        zoom = map.getZoom();
+        var zoom = map.getZoom();
         document.getElementById("zoom").innerHTML = zoom.toString();
+        var zum = Math.max(Math.log(w), Math.log(h));
+        document.getElementById("zum").innerHTML = zum.toString();
+        document.getElementById("bb").innerHTML = shobb(sw, ne);
       }
       report()
 
@@ -50,9 +64,11 @@
    <p>
    CT = <span id="ct">center</span>  
    SW = <span id="sw">southwest</span> 
-   NE = <span id="ne">northeast</span> <br>
-   sizes = <span id="sizes">sizes</span>
+   NE = <span id="ne">northeast</span>
+   sizes = <span id="sizes">sizes</span> <br>
    zoom = <span id="zoom">zoom</span>
+   zum = <span id="zum">zum</span> <br>
+   bb = <span id="bb">bb</span>
    </p>
  </body>
 </html>
