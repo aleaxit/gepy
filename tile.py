@@ -155,11 +155,6 @@ class GlobalMercator(object):
     # coordinate origin is moved from bottom-left to top-left corner of extent
     return tx, (2**zoom - 1) - ty
 
-  def GoogleTile(self, tx, ty, zoom):
-    "Converts TMS tile coordinates to Google Tile coordinates"
-    # coordinate origin is moved from bottom-left to top-left corner of extent
-    return tx, (2**zoom - 1) - ty
-
   def QuadTree(self, tx, ty, zoom ):
     "Converts TMS tile coordinates to Microsoft QuadTree"
     quadKey = ""
@@ -176,7 +171,7 @@ class GlobalMercator(object):
 
 
 if __name__ == "__main__":
-  import sys, os
+  import sys
 
   def Usage(s = ""):
     print "Usage: tile.py zoomlevel lat lon [latmax lonmax]"
