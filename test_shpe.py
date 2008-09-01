@@ -8,10 +8,13 @@ def test_some_metas():
   """ 
   >>> s = shpextract.Shp('ca/zt06_d00.shp', id_field_name='ZCTA')
   >>> len(s)
-  1678
+  2001
   >>> s.last_read_id
   >>> s.last_read_recno
-  >>> s.set_next_id('94303')
+  >>> recs = s.recnos_by_id('94303')
+  >>> recs
+  [2459]
+  >>> s.set_next_recno(2459)
   >>> r = s.get_next_record(id=1, recno=1, bbox=1, datalen=1, data=0)
   >>> s.last_read_id
   '94303'

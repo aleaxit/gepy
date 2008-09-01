@@ -12,28 +12,32 @@ http://indiemaps.com/blog/2008/03/easy-shapefile-loading-in-python/ .  See
 http://en.wikipedia.org/wiki/Shapefile for more information about the Shapefile
 format.
 
-This module is, by default, somewhat-specialized to process the freely available
-US Census' TIGER/Line shapefiles for 5-digit ZTCAs in the US; see
+This module is, by default, somewhat-specialized to process the freely
+available US Census' TIGER/Line shapefiles for 5-digit ZTCAs in the US; see
 http://www.census.gov/geo/www/tiger/ for more information about TIGER/Line
 files.  The specialization (besides focusing only on shapefiles that hold
-polygons or polylines) lies in the choice of unique-identifier attribute for
-each record: in this module, the attribute used as the unique identifier is the
-one named ZCTA5CE00, and the module only examines records where that identifier
-is made of all digits ("real" zipcodes as opposed to "synthetic" ones for water
-areas and land wilderness).
+polygons or polylines) lies in the choice of primary (NOT necessarily unique!)
+identifier attribute for each record: in this module, by default, the attribute
+used as the primary identifier is the one named ZCTA5CE00, and the module only
+examines records where that identifier is made of all digits ("real" zipcodes
+as opposed to "synthetic" ones for water areas and land wilderness).
 
 This specialization can be countered (allowing the reading of any shapefile of
-polygons or polylines) by instantiating the Shp class with other explicit
-values of optional parameters id_field_name (str, default 'ZTCA5CE00') and/or
-id_field_check (callable, must return a false value for unacceptable IDs).
+polygons or polylines) by instantiating the Shp class with other explicit values
+of optional parameters id_field_name (str, default 'ZTCA5CE00') and/or
+id_field_check (callable, must return a false value for unacceptable IDs). For
+example, passing id_field_name='ZTCA' lets you deal with the per-state ZTCA
+TIGER/Line files also distributed by the US Census (i.e., the Shapefiles
+available at http://www.census.gov/geo/www/cob/z52000.html).
 
 The module assumes all bounding boxes are 4 doubles in order: xmin, ymin, xmax,
 ymax; AKA, 2 points in order WS, EN (longitude then latitude, longlat, the
 natural format for Shapefiles); the module provides a utility function to
-make a bbox in that SHP-oriented format given the format that's more natural in
+make a bbox in this SHP-oriented format given the format that's more natural in
 KML &c, which is (latlong) SW, NE, and an optional magnification around the box center.
 """
 import array
+import collections
 import contextlib
 import doctest
 import struct
@@ -250,8 +254,9 @@ class Shp(object):
     Args:
       filename: path to the .shp file, including the extension
                 .dbf (and .shx if any) must have the same dir & basename
-      select_bbox: if not None, only records interescting this box matter
-      id_field_name: the name of the DBF attribute which identifies records
+      select_bbox: if not None, only records intersecting this box matter
+      id_field_name: the name of the DBF attribute that's the primary ID
+        (duplicates ARE allowed: record-number is the only UNIQUE identifier!)
       id_check: callable with one arg (an id) returning true for "good" ids
     Raises:
       IOError (propagated) for missing .shp or .dbf files
@@ -281,30 +286,31 @@ class Shp(object):
       field_names = dbr.next()
       field_specs = dbr.next()
       self._db = list(dbr)
-    # identify index unique-ID field
+    # identify index primary-ID field
     # print>>sys.stderr, 'all fields', field_names
     for i, field_name in enumerate(field_names):
       # print 'field:', field_name
       if field_name == id_field_name: break
     else:
+      fields = ' '.join(x.strip() for x in field_names)
       msg = 'DBF file %r has no field named %r' % (dbf_file, id_field_name)
+      msg += '\nAvailable field names are: %s' % fields
       raise ValueError, msg
     self._db = [entry[i] for entry in self._db]
-    assert len(self._db) == len(set(self._db))
     self._id_check = id_check
 
-    # try building an ID -> byte offset mapping if the .SHX file is present
+    # try building an ID -> byte offsets mapping if the .SHX file is present
     shx_file = filename[:-4] + '.shx'
     try:
       f = open(shx_file, 'rb')
     except IOError:
       # survive missing .SHX file (no indexing in this case, though)
-      self._by_id = None
-      self._by_recno = None
+      self._recno_by_id = None
+      self._offset_by_recno = None
       self._len = sum(1 for id in self._db if self._id_check(id))
     else:
-      self._by_id = {}
-      self._by_recno = {}
+      self._recno_by_id = collections.defaultdict(list)
+      self._offset_by_recno = {}
       with contextlib.closing(f):
         f.seek(100)
         shx_offsets_and_lengths = read_ints(f, 2*len(self._db))
@@ -312,8 +318,9 @@ class Shp(object):
         for recno, (id, offs) in enumerate(
             zip(self._db, shx_offsets_and_lengths[0::2])):
           if not self._id_check(id): continue
-          self._by_id[id] = self._by_recno[recno+1] = 2*offs
-        self._len = len(self._by_id)
+          self._recno_by_id[id].append(recno+1)
+          self._offset_by_recno[recno+1] = 2*offs
+        self._len = len(self._offset_by_recno)
     if not self._len:
       raise StopIteration, "No record ID passes the id-check function"
 
@@ -348,17 +355,24 @@ class Shp(object):
     except KeyError: raise KeyError, '%s %r not in index' % (keyname, key)
     else: self._seek_to(offs)
 
-  def set_next_id(self, id):
-    """ Seek the SHP file to just before a record with the given ID.
+  def recnos_by_id(self, id):
+    """ Get the record numbers of all fields with the given ID
 
     Args:
       id: the id we're looking for
+    Returns:
+      list of 1+ record numbers (in sorted order) with the given ID
     Raises:
       ValueError if id doesn't pass the good-id test
       AttributeError if the SHX file was not present (SHP not indexable)
       KeyError if there is no record with the requested id
     """
-    self._set_next(id, 'ID', self._id_check, self._by_id)
+    if not self._id_check(id):
+      raise ValueError, 'Invalid ID: %r' % id
+    elif self._recno_by_id is None:
+      raise AttributeError, 'SHX was not present, SHP not indexable'
+    try: return self._recno_by_id[id]
+    except KeyError: raise KeyError, 'ID %r not in index' % id
 
   def set_next_recno(self, recno):
     """ Seek the SHP file to just before a record with the given record #.
@@ -371,7 +385,8 @@ class Shp(object):
       KeyError if there is no record with the requested record number
         (record number too high, or record w/that number has bad id)
     """
-    self._set_next(recno, 'Record Number', lambda x: x>=1, self._by_recno)
+    self._set_next(recno, 'Record Number', lambda x: x>=1,
+                   self._offset_by_recno)
 
   # read-only properties for important internal attributes
   for _at in 'last_read_id last_read_recno select_bbox'.split():
