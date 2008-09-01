@@ -88,7 +88,7 @@ class GlobalMercator(object):
     "Converts XY point from Spherical Mercator to lat/lon in WGS84 Datum"
     lon = mx / self._oSd
     lat = my / self._oSd
-    lat = math.atan(math.exp(lat * self._pd))/self._pd2 - self._p2
+    lat = (2*math.atan(math.exp(lat * self._pd)) - self._p2) / self._pd
     return lat, lon
 
   def PixelsToMeters(self, px, py, zoom):
@@ -130,7 +130,7 @@ class GlobalMercator(object):
 
   def TileLatLonBounds(self, tx, ty, zoom):
     "Returns bounds of the given tile in latitude/longitude using WGS84 datum"
-    bounds = self.TileBounds( tx, ty, zoom)
+    bounds = self.TileBounds(tx, ty, zoom)
     minLat, minLon = self.MetersToLatLon(bounds[0], bounds[1])
     maxLat, maxLon = self.MetersToLatLon(bounds[2], bounds[3])
     return minLat, minLon, maxLat, maxLon
@@ -144,6 +144,11 @@ class GlobalMercator(object):
     for i in range(30):
       if pixelSize > self.Resolution(i):
         return i-1 if i!=0 else 0 # We don't want to scale up
+
+  def GoogleTile(self, tx, ty, zoom):
+    "Converts TMS tile coordinates to Google Tile coordinates"
+    # coordinate origin is moved from bottom-left to top-left corner of extent
+    return tx, (2**zoom - 1) - ty
 
   def GoogleTile(self, tx, ty, zoom):
     "Converts TMS tile coordinates to Google Tile coordinates"
@@ -225,17 +230,17 @@ information is printed including bonding box in EPSG:900913 and WGS84."""
         print tilefilename, "( TileMapService: z / x / y )"
 
         gx, gy = mercator.GoogleTile(tx, ty, tz)
-        print "\tGoogle:", gx, gy
-        quadkey = mercator.QuadTree(tx, ty, tz)
-        print "\tQuadkey:", quadkey, '(',int(quadkey, 4),')'
-        bounds = mercator.TileBounds( tx, ty, tz)
-        print
-        print "\tEPSG:900913 Extent: ", bounds
+        print "\tGoogle:", gx, gy, mercator.GoogleTile(gx, gy, tz)
+        # quadkey = mercator.QuadTree(tx, ty, tz)
+        # print "\tQuadkey:", quadkey, '(',int(quadkey, 4),')'
+        # bounds = mercator.TileBounds( tx, ty, tz)
+        # print
+        # print "\tEPSG:900913 Extent: ", bounds
         wgsbounds = mercator.TileLatLonBounds( tx, ty, tz)
         print "\tWGS84 Extent:", wgsbounds
-        print "\tgdalwarp -ts 256 256 -te %s %s %s %s %s %s_%s_%s.tif" % (
-            bounds[0], bounds[1], bounds[2], bounds[3],
-            "<your-raster-file-in-epsg900913.ext>", tz, tx, ty)
+        # print "\tgdalwarp -ts 256 256 -te %s %s %s %s %s %s_%s_%s.tif" % (
+        #     bounds[0], bounds[1], bounds[2], bounds[3],
+        #     "<your-raster-file-in-epsg900913.ext>", tz, tx, ty)
         print
 
   main()
