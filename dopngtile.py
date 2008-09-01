@@ -8,6 +8,8 @@ import tile
 import pypng
 import shpextract
 
+ZOOM = 12
+
 m = tile.GlobalMercator()
 
 def do_tile(xt, yt, zoom, name):
@@ -20,11 +22,12 @@ def do_tile(xt, yt, zoom, name):
   # print ' Zipcodes:', ' '.join(sorted(zips))
   # s.rewind()
   png = pypng.PNG(minlon, minlat, maxlon, maxlat)
+  red = png.get_color(255, 0, 0)
   for r in s:
     # if r[0] != '94303': continue
     # print 'drawing 94303...'
     for d in r[1:]:
-      png.polyline(d, 1)
+      png.polyline(d, red)
   with open(name, 'wb') as f:
     f.write(png.dump())
 
@@ -54,7 +57,7 @@ def main():
   bb = r[0]
   print 'removing all existing PNG files'
   os.system('rm *.png')
-  what_tiles(12, bb[1], bb[0], bb[3], bb[2])
+  what_tiles(ZOOM, bb[1], bb[0], bb[3], bb[2])
 
 main()
 
