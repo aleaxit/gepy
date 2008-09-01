@@ -1,0 +1,36 @@
+#!/usr/bin/python
+from __future__ import with_statement
+import collections
+import sys
+import dbfUtils
+
+
+def main():
+  if len(sys.argv) != 2:
+    print "usage: %s filename.dbf" % (sys.argv[0])
+    sys.exit(1)
+  with open(sys.argv[1], 'rb') as dbf:
+    dbr = dbfUtils.dbfreader(dbf)
+    field_names = dbr.next()
+    field_specs = dbr.next()
+    _db = list(dbr)
+  print field_names
+  # print field_specs
+  dbse = collections.defaultdict(list)
+  for x in _db:
+    dbse[x[4]].append(x)
+  for k in sorted(dbse):
+    v = dbse[k]
+    if len(v) == 1: continue
+    if not k.isdigit(): continue
+    print 'Group of %d items for k=%s' % (len(v), k)
+    for x in v:
+      print '%5.3f %5.3f %4d %4d' % (float(x[0]), float(x[1]),
+          int(x[2]), int(x[3])),
+      for i in range(5, len(x)):
+        if x[i] != v[0][i]: print '(%d:%s)'%(i,x[i]),
+      print
+
+main()
+# ['AREA', 'PERIMETER', 'ZT06_D00_', 'ZT06_D00_I',
+#  'ZCTA', 'NAME', 'LSAD', 'LSAD_TRANS']
