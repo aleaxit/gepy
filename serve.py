@@ -17,10 +17,35 @@ import sys
 import threading
 import webbrowser
 
+import pypng
+
+def square(p, mi, ma, color, sq=(0,1,3,2,0)):
+  """ Draw a square (mi,mi)->(mi,ma)->(ma,ma)->(ma,mi)->(mi,mi) on a PNG.
+  """
+  def pt(j,c=(mi,ma)): return c[j&1], c[j>1]
+  def ps(i, color=color, sq=sq): p.draw_line(pt(sq[i]), pt(sq[i+1]), color)
+  for i in range(4): ps(i)
+
 def do_cgi(form):
-  print 'Content-Type: text/plain'
-  print
-  print 'hello world!'
+  """ Utility CGI service for all kinds of useful doodads. So far...:
+  - if a png=foo is requested, makes a png on the fly
+    (the idea is to show all other parameters on log/console too!)
+  - that's it (no other uses yet)
+  If none of the useful doodads is requested, serves a text/plain "hello world".
+  """
+  if form.has_key('png'):
+    p = pypng.PNG()
+    green = p.get_color(0, 255, 0)
+    square(p, 1, 254, green)
+    red = p.get_color(255, 0, 0)
+    square(p, 3, 252, red)
+    print 'Content-Type: image/png'
+    print
+    print p.dump(),
+  else:
+    print 'Content-Type: text/plain'
+    print
+    print 'hello world!'
 
 def do_browse():
   try: page = sys.argv[2]
