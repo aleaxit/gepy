@@ -50,8 +50,12 @@ def do_cgi(form, tmpdir='/tmp'):
       print>>sys.stderr, "Serving %r from cache" % fn
     except IOError:
       if k[0] == 'ZIP':
-        print>>sys.stderr, "Generating tile file %r" % fn
+        print>>sys.stderr, "Generating ZIP tile file %r" % fn
         dopngtile.onetile(int(k[1]), int(k[2]), int(k[3]), fn)
+        with open(fn, 'rb') as f: data = f.read()
+      elif k[0] == 'USA':
+        print>>sys.stderr, "Generating USA tile file %r" % fn
+        dopngtile.usatile(int(k[1]), int(k[2]), int(k[3]), fn)
         with open(fn, 'rb') as f: data = f.read()
       else:
         p = pypng.PNG()

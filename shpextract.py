@@ -25,7 +25,7 @@ as opposed to "synthetic" ones for water areas and land wilderness).
 This specialization can be countered (allowing the reading of any shapefile of
 polygons or polylines) by instantiating the Shp class with other explicit values
 of optional parameters id_field_name (str, default 'ZTCA5CE00') and/or
-id_field_check (callable, must return a false value for unacceptable IDs). For
+id_check (callable, must return a false value for unacceptable IDs). For
 example, passing id_field_name='ZTCA' lets you deal with the per-state ZTCA
 TIGER/Line files also distributed by the US Census (i.e., the Shapefiles
 available at http://www.census.gov/geo/www/cob/z52000.html).
@@ -431,6 +431,7 @@ class Shp(object):
       shapetype = read_one(self._fp, 'i')
       assert shapetype in (3, 5)
       the_bbox = read_doubles(self._fp, 4)
+      if the_id=='ND': print>>sys.stderr,'ND:',the_bbox
       if self.all_out(the_bbox):
         self._fp.seek(endrec)
         continue
