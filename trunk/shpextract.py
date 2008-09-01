@@ -290,6 +290,7 @@ class Shp(object):
       msg = 'DBF file %r has no field named %r' % (dbf_file, id_field_name)
       raise ValueError, msg
     self._db = [entry[i] for entry in self._db]
+    assert len(self._db) == len(set(self._db))
     self._id_check = id_check
 
     # try building an ID -> byte offset mapping if the .SHX file is present

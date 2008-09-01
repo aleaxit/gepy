@@ -121,6 +121,11 @@ class GlobalMercator(object):
     px, py = self.MetersToPixels(mx, my, zoom)
     return self.PixelsToTile(px, py, zoom)
 
+  def LatLonToTile(self, lat, lon, zoom):
+    "Returns tile for given lat/lon in WGS84 Datum"
+    mx, my = self.LatLonToMeters(lat, lon)
+    return self.MetersToTile(mx, my, zoom)
+
   def TileBounds(self, tx, ty, zoom):
     "Returns bounds of the given tile in EPSG:900913 coordinates"
     minx, miny = self.PixelsToMeters(tx*self.tileSize, ty*self.tileSize, zoom)
