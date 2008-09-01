@@ -46,8 +46,13 @@ class PNG(object):
     try: self.data[y][x] = color
     except IndexError: return
 
+  def tplot(self, x, y, color, dx, dy):
+    for ax in range(x, x+dx):
+      for ay in range(y, y+dy):
+        self.plot(ax, ay, color)
+
   # draw line by Bresenham algorithm
-  def draw_line(self, (x0, y0), (x1, y1), color):
+  def draw_line(self, (x0, y0), (x1, y1), color, thick=1):
     steep = abs(y1 - y0) > abs(x1 - x0)
     if steep:
       x0, y0 = y0, x0
@@ -64,21 +69,21 @@ class PNG(object):
       ystep = -1
     y = y0
     for x in range(x0, x1):
-      if steep: self.plot(y, x, color)
-      else: self.plot(x, y, color)
+      if steep: self.tplot(y, x, color, 1+thick, 1)
+      else: self.tplot(x, y, color, 1, 1+thick)
       error -= deltay
       if error < 0:
         y += ystep
         error += deltax
-    if steep: self.plot(y1, x1, color)
-    else: self.plot(x1, y1, color)
+    if steep: self.tplot(y1, x1, color, 1+thick, 1)
+    else: self.tplot(x1, y1, color, 1, 1+thick)
 
-  def polyline(self, arr, color):
+  def polyline(self, arr, color, thick=1):
     pts = iter(arr)
     previous = self.coords(pts.next(), pts.next())
     for pt in pts:
       pt = self.coords(pt, pts.next())
-      self.draw_line(previous, pt, color)
+      self.draw_line(previous, pt, color, thick)
       previous = pt
 
   def dump(self):
