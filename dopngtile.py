@@ -1,5 +1,7 @@
 """ Given a zoom factor and a bbox, produce the relevant 256x256 PNG files.
 """
+from __future__ import with_statement
+
 import os
 
 import tile
@@ -12,11 +14,19 @@ def do_tile(xt, yt, zoom, name):
   print ' Creating file %s' % name
   minlat, minlon, maxlat, maxlon = m.TileLatLonBounds(xt, yt, zoom)
   print ' BB:', minlat, minlon, maxlat, maxlon
-  s.set_select_bbox((minlon, minlat ,maxlon, maxlat))
+  s.set_select_bbox((minlon, minlat, maxlon, maxlat))
   s.rewind()
-  zips = []
-  for r in s: zips.append(r[0])
-  print ' Zipcodes:', ' '.join(sorted(zips))
+  # zips = set(r[0] for r in s)
+  # print ' Zipcodes:', ' '.join(sorted(zips))
+  # s.rewind()
+  png = pypng.PNG(minlon, minlat, maxlon, maxlat)
+  for r in s:
+    # if r[0] != '94303': continue
+    # print 'drawing 94303...'
+    for d in r[1:]:
+      png.polyline(d, 1)
+  with open(name, 'wb') as f:
+    f.write(png.dump())
 
 def what_tiles(zoom, minlat, minlon, maxlat, maxlon):
   print 'tiles for', minlat, minlon, maxlat, maxlon
@@ -37,10 +47,14 @@ def what_tiles(zoom, minlat, minlon, maxlat, maxlon):
 def main():
   global s
   s = shpextract.Shp('ca/zt06_d00.shp', id_field_name='ZCTA')
-  s.set_next_id('94303')
+  recs = s.recnos_by_id('94303')
+  assert len(recs) == 1
+  s.set_next_recno(recs[0])
   r = s.get_next_record(id=0, recno=0, bbox=1, datalen=0, data=0)
   bb = r[0]
-  what_tiles(10, bb[1], bb[0], bb[3], bb[2])
+  print 'removing all existing PNG files'
+  os.system('rm *.png')
+  what_tiles(12, bb[1], bb[0], bb[3], bb[2])
 
 main()
 

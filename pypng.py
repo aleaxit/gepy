@@ -9,7 +9,7 @@ png_signature = struct.pack("8B", 137, 80, 78, 71, 13, 10, 26, 10)
 
 class PNG(object):
 
-  def __init__(self, xoff=0.0, yoff=0.0, xscale=0.0, yscale=0.0,
+  def __init__(self, minx=None, miny=None, maxx=None, maxy=None,
       width=256, height=256):
     self.width = width
     self.height = height
@@ -19,6 +19,19 @@ class PNG(object):
     white = 255, 255, 255
     self.palette = array.array('B', struct.pack('9B', *(2*black+white)))
     self.color_index = dict(black=1, white=2)
+    if minx is None:
+      def coords(x, y): return x, y
+      self.coords = coords
+      return
+    self.minx = minx
+    self.miny = miny
+    self.xmul = width / (maxx - minx)
+    self.ymul = height / (maxy - miny)
+
+  def coords(self, x, y):
+    result = int(self.xmul*(x-self.minx)), int(self.ymul*(y-self.miny))
+    # print 'K', x, y, result
+    return result
 
   def get_color(self, r, g, b):
     rgb = r, g, b
@@ -29,6 +42,7 @@ class PNG(object):
     return self.color_index[rgb]
 
   def plot(self, x, y, color):
+    if x<0 or y<0: return
     try: self.data[y][x] = color
     except IndexError: return
 
@@ -61,9 +75,10 @@ class PNG(object):
 
   def polyline(self, arr, color):
     pts = iter(arr)
-    previous = pts.next()
+    previous = self.coords(pts.next(), pts.next())
     for pt in pts:
-      self.draw_to(previous, pt, color)
+      pt = self.coords(pt, pts.next())
+      self.draw_line(previous, pt, color)
       previous = pt
 
   def dump(self):
