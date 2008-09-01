@@ -14,10 +14,12 @@ import CGIHTTPServer
 import contextlib
 import socket
 import sys
+import time
 import threading
 import webbrowser
 
 import pypng
+import dopngtile
 
 # ensure binary stdout on Windows (it's already guaranteed elsewhere)
 try: import msvcrt, os
@@ -36,6 +38,7 @@ def do_cgi(form, tmpdir='/tmp'):
   - if a png=foo is requested, makes a "foo png" on the fly
     (the idea is to show all other parameters on log/console too!)
     (currently also tries caching it on disk in /tmp)
+    If specifically png='ZIP', use dopngtile for the purpose.
   - that's it (no other uses yet)
   If none of the useful doodads is requested, serves a text/plain "hello world".
   """
@@ -44,15 +47,21 @@ def do_cgi(form, tmpdir='/tmp'):
     fn = '%s/srv_%s_%s_%s_%s.png' % ((tmpdir,)+k)
     try:
       with open(fn, 'rb') as f: data = f.read()
+      print>>sys.stderr, "Serving %r from cache" % fn
     except IOError:
-      p = pypng.PNG()
-      green = p.get_color(0, 255, 0)
-      square(p, 1, 254, green)
-      red = p.get_color(255, 0, 0)
-      square(p, 3, 252, red)
-      data = 'Content-Type: image/png\n\n' + p.dump()
-      with open(fn, 'wb') as f: f.write(data)
-    sys.stdout.write(data)
+      if k[0] == 'ZIP':
+        print>>sys.stderr, "Generating tile file %r" % fn
+        dopngtile.onetile(int(k[1]), int(k[2]), int(k[3]), fn)
+        with open(fn, 'rb') as f: data = f.read()
+      else:
+        p = pypng.PNG()
+        green = p.get_color(0, 255, 0)
+        square(p, 1, 254, green)
+        red = p.get_color(255, 0, 0)
+        square(p, 3, 252, red)
+        data = p.dump()
+        with open(fn, 'wb') as f: f.write(data)
+    sys.stdout.write('Content-Type: image/png\n\n' + data)
   else:
     print 'Content-Type: text/plain'
     print
