@@ -19,10 +19,8 @@ def do_tile(xt, yt, zoom, name):
   print>>sys.stderr, ' BB:', minlat, minlon, maxlat, maxlon
   s.set_select_bbox((minlon, minlat, maxlon, maxlat))
   s.rewind()
-  # zips = set(r[0] for r in s)
-  # print ' Zipcodes:', ' '.join(sorted(zips))
-  # s.rewind()
-  png = pypng.PNG(minlon, minlat, maxlon, maxlat)
+  # note min/max lat must be swapped in PNG drawing to get the Y axis right!
+  png = pypng.PNG(minlon, maxlat, maxlon, minlat)
   red = png.get_color(255, 0, 0)
   for r in s:
     # if r[0] != '94303': continue
@@ -64,6 +62,13 @@ def main():
 def onetile(x, y, z, name):
   global s
   s = shpextract.Shp('ca/zt06_d00.shp', id_field_name='ZCTA')
+  gx, gy = m.GoogleTile(x, y, z)
+  do_tile(gx, gy, z, name)
+
+def usatile(x, y, z, name):
+  global s
+  s = shpextract.Shp('fe_2007_us_state/fe_2007_us_state.shp',
+                     id_field_name='STUSPS', id_check=lambda x: True)
   gx, gy = m.GoogleTile(x, y, z)
   do_tile(gx, gy, z, name)
 

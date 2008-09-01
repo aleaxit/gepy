@@ -15,22 +15,20 @@ def main():
     field_specs = dbr.next()
     _db = list(dbr)
   print field_names
-  # print field_specs
-  dbse = collections.defaultdict(list)
-  for x in _db:
-    dbse[x[4]].append(x)
-  for k in sorted(dbse):
-    v = dbse[k]
-    if len(v) == 1: continue
-    if not k.isdigit(): continue
-    print 'Group of %d items for k=%s' % (len(v), k)
-    for x in v:
-      print '%5.3f %5.3f %4d %4d' % (float(x[0]), float(x[1]),
-          int(x[2]), int(x[3])),
-      for i in range(5, len(x)):
-        if x[i] != v[0][i]: print '(%d:%s)'%(i,x[i]),
-      print
+  print field_specs
+  print len(_db), 'total records'
+  counts = [collections.defaultdict(int) for f in field_names]
+  for record in _db:
+    for count, field in zip(counts, record):
+      count[field] += 1
+  print 'Number of unique values:'
+  for i, (count, name) in enumerate(zip(counts, field_names)):
+    nums = len(count)
+    if nums == 1:
+      value = '(%s)' % record[i]
+    else:
+      value = ''
+    print '%10s: %3d %s' % (name, nums, value)
+     
 
 main()
-# ['AREA', 'PERIMETER', 'ZT06_D00_', 'ZT06_D00_I',
-#  'ZCTA', 'NAME', 'LSAD', 'LSAD_TRANS']
