@@ -14,7 +14,8 @@
   function load() {
     if (GBrowserIsCompatible()) {
       var map = new GMap2(document.getElementById("map_canvas"));
-      map.setCenter(new GLatLng(37.4419, -122.1419), 13);
+      // map.setCenter(new GLatLng(37.4419, -122.1419), 13);
+      map.setCenter(new GLatLng(37.76675,-98.93164), 3);
       map.addControl(new GLargeMapControl());
       function twofloats(lat, lon) {
         return '(' + lat.toFixed(5) + ',' +
@@ -60,7 +61,7 @@
    </script>
  </head>
  <body onload="load()" onunload="GUnload()">
-   <div id="map_canvas" style="width: 700px; height: 500px"></div>
+   <div id="map_canvas" style="width: 500px; height: 400px"></div>
    <p>
    CT = <span id="ct">center</span>  
    SW = <span id="sw">southwest</span> 

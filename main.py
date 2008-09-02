@@ -2,6 +2,7 @@
 from __future__ import with_statement
 
 import cgi
+import logging
 import wsgiref.handlers
 from google.appengine.ext import webapp
 from google.appengine.api import memcache
@@ -22,6 +23,7 @@ def get_tile(name, x, y, z, maker=None):
   # first try the cache
   data = memcache.get(name)
   if data is not None:
+    logging.info('%r in cache (%d)', name, len(data))
     return data
   else:
     # then try the datastore
@@ -29,14 +31,17 @@ def get_tile(name, x, y, z, maker=None):
     tiles = query.fetch(1)
     if len(tiles) == 1:
       data = tiles[0].data
+      logging.info('%r in store (%d)', name, len(data))
     else:
       # nope, generate the tile and put it in the datastore
       if maker is None:
         data = None
+        logging.info('%r not there', name)
       else:
         data = maker(x, y, z, None)
         tile = models.Tile(name=name, data=data)
         tile.put()
+        logging.info('%r just made (%d)', name, len(data))
     # tile wasn't in cache, put it there
     memcache.add(name, data)
     return data
@@ -78,7 +83,7 @@ class TileHandler(webapp.RequestHandler):
       # self.response.set_status(500, "Can't make PNG for %r" % name)
       with open('tile_crosshairs.png') as f: data = f.read()
       # return
-    self.response.headers.add_header('Content-Type', 'image/png')
+    self.response.headers['Content-Type'] = 'image/png'
     self.response.out.write(data)
 
   def post(self):

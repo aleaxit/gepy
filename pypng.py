@@ -58,6 +58,7 @@ class PNG(object):
 
   # draw line by Bresenham algorithm
   def draw_line(self, (x0, y0), (x1, y1), color, thick=1):
+    if x0==x1 and y0==y1: return
     steep = abs(y1 - y0) > abs(x1 - x0)
     if steep:
       x0, y0 = y0, x0
