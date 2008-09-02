@@ -38,7 +38,10 @@ def uploading_thread():
       return
     path = 'http://%s:%s/tile?name=%s' % (host, port, name)
     logging.info('Uploading %s', path)
-    conn.request('POST', path, data)
+    try: conn.request('POST', path, data)
+    except socket.error, e:
+      logging.error("Cannot POST: %s", e)
+      return
     rl = conn.getresponse()
     logging.info('POST to %s gave: %s %r', path, rl.status, rl.reason)
 
@@ -60,7 +63,7 @@ def main():
   dopngtile.s = s = shpextract.Shp('fe_2007_us_state/fe_2007_us_state.shp',
                        id_field_name='STUSPS', id_check=lambda x: True)
   logging.info('USA bbox: %s', shpextract.showbb(s.overall_bbox))
-  usabb = -126.0, 5.6, -65.0, 50.0
+  usabb = SW[0], SW[1], NE[0], NE[1]
   for zoom in range(3, 4):
     n = 0
     for gx, gy, x, y, z in dopngtile.tile_coords_generator(
