@@ -1,0 +1,14 @@
+application: gepy
+version: 1
+runtime: python
+api_version: 1
+
+handlers:
+- url: /(.*)\.html
+  static_files: \1.html
+  upload: (.*).html
+- url: /
+  static_files: gepy.html
+  upload: gepy.html
+- url: .*
+  script: main.py
