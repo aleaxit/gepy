@@ -2,6 +2,7 @@ import httplib
 import logging
 import Queue
 import socket
+import time
 import threading
 
 import dopngtile
@@ -10,6 +11,8 @@ import shpextract
 upq = Queue.Queue()
 host = 'localhost'
 port = 8080
+host = 'gepy.appspot.com'
+port = 80
 thread_pool_size = 3
 thread_pool = []
 
@@ -22,8 +25,10 @@ def start_thread_pool():
 def finis_thread_pool():
   for t in thread_pool:
     upq.put((None,None))
+  logging.info('%d left', upq.qsize)
   for t in thread_pool:
     t.join()
+    logging.info('%d left', upq.qsize)
 
 
 def uploading_thread():
@@ -38,17 +43,40 @@ def uploading_thread():
       logging.info('Terminating thread.')
       return
     path = 'http://%s:%s/tile?name=%s' % (host, port, name)
-    logging.info('Uploading %s', path)
-    try: conn.request('POST', path, data)
-    except socket.error, e:
-      logging.error("Cannot POST: %s", e)
-      return
-    rl = conn.getresponse()
-    logging.info('%s: %s %r', path, rl.status, rl.reason)
+    logging.debug('Uploading %s', path)
+
+    while True:
+      retries = 0
+      while retries < 100:
+        try:
+          try: conn.request('POST', path, data)
+          except socket.error, e:
+            logging.error("Cannot POST: %s", e)
+            return
+        except httplib.CannotSendRequest:
+          time.sleep(1.0)
+          retries += 1
+        else: break
+      if retries > 100:
+        logging.error('gonna retry to send %s', path)
+        conn = httplib.HTTPConnection(host, port, strict=True)
+
+    retries = 0
+    while retries < 100:
+      try: rl = conn.getresponse()
+      except httplib.ResponseNotReady:
+        time.sleep(1.0)
+        retries += 1
+      else: break
+    if retries > 100:
+      logging.error('gave up on response on %s', path)
+      conn = httplib.HTTPConnection(host, port, strict=True)
+    else:
+      logging.debug('%s: %s %r', path, rl.status, rl.reason)
 
 
 def upload(name, data):
-  logging.info('Queueing %r (%d bytes) for upload', name, len(data))
+  logging.debug('Queueing %r (%d bytes) for upload', name, len(data))
   upq.put((name, data))
 
 def main():
@@ -84,7 +112,8 @@ def main():
         continue
       n += 1
       upload(name, data)
-    logging.info('%d done (%d still in upload queue)', n, upq.qsize())
+    logging.info('%d files done for zoom %d (%d still in upload queue)',
+        n, zoom, upq.qsize())
 
   finis_thread_pool()
 
