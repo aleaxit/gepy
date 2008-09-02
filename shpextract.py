@@ -233,8 +233,13 @@ class Shp(object):
     Returns:
       True ifd self has a select-bbox and bb lies entirely outside of it
     """
-    if cb is None: cb = self._select_bbox
-    if cb is None: return False
+    if cb is None:
+      cb = self._select_bbox
+      if cb is None: return False
+    # if bb[0] > cb[2] : print 'bb0/cb2', bb[0], cb[2]
+    # if bb[2] > cb[0] : print 'bb2/cb0', bb[2], cb[0]
+    # if bb[1] > cb[3] : print 'bb1/cb3', bb[1], cb[3]
+    # if bb[3] > cb[1] : print 'bb3/cb1', bb[3], cb[1]
     return bb[0] > cb[2] or bb[2] < cb[0] or bb[1] > cb[3] or bb[3] < cb[1]
 
   def set_select_bbox(self, select_bbox):
@@ -431,7 +436,7 @@ class Shp(object):
       shapetype = read_one(self._fp, 'i')
       assert shapetype in (3, 5)
       the_bbox = read_doubles(self._fp, 4)
-      if the_id=='ND': print>>sys.stderr,'ND:',the_bbox
+      # if the_id=='ND': print>>sys.stderr,'ND:',the_bbox
       if self.all_out(the_bbox):
         self._fp.seek(endrec)
         continue

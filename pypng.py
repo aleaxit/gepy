@@ -2,9 +2,13 @@
 """ Make a 256 x 256 PNG map-tile with transparent background + polylines.
 """
 import array
+import logging
 import struct
 import zlib
 
+logger = logging.getLogger()
+def isdebon(level=logging.DEBUG, logger=logger):
+  return logger.isEnabledFor(level)
 png_signature = struct.pack("8B", 137, 80, 78, 71, 13, 10, 26, 10)
 
 class PNG(object):
@@ -27,10 +31,11 @@ class PNG(object):
     self.miny = miny
     self.xmul = width / (maxx - minx)
     self.ymul = height / (maxy - miny)
+    # print 'PNG bnds:', minx, miny, maxx, maxy, self.xmul, self.ymul
 
   def coords(self, x, y):
-    result = int(self.xmul*(x-self.minx)), int(self.ymul*(y-self.miny))
-    # print 'K', x, y, result
+    result = int(self.xmul*(x-self.minx)+0.5), int(self.ymul*(y-self.miny)+0.5)
+    # print 'PNG pt:', x, y, result
     return result
 
   def get_color(self, r, g, b):
@@ -88,6 +93,10 @@ class PNG(object):
 
   def dump(self):
     raw_data = '\0' + '\0'.join(row.tostring() for row in self.data)
+    if isdebon():
+      total = len(raw_data)
+      unset = raw_data.count('\0')
+      logging.debug('%d of %d pixels set', total-unset, total)
 
     return ''.join((png_signature,
       self.pack_chunk('IHDR',
