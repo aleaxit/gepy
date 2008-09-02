@@ -10,6 +10,12 @@ from google.appengine.api import memcache
 import dopngtile
 import models
 
+
+def persist_tile(name, data):
+    tile = models.Tile(name=name, data=data)
+    tile.put()
+    logging.info('%r just made (%d)', name, len(data))
+
 def get_tile(name, x, y, z, maker=None):
   """ Get from cache or store, or make and put in store and cache, a tile.
 
@@ -39,11 +45,10 @@ def get_tile(name, x, y, z, maker=None):
         logging.info('%r not there', name)
       else:
         data = maker(x, y, z, None)
-        tile = models.Tile(name=name, data=data)
-        tile.put()
-        logging.info('%r just made (%d)', name, len(data))
+        persist_tile(name, data)
     # tile wasn't in cache, put it there
-    memcache.add(name, data)
+    if data:
+      memcache.add(name, data)
     return data
 
 def queryget(query, name):
@@ -81,7 +86,11 @@ class TileHandler(webapp.RequestHandler):
     data = get_tile(name, x, y, z, maker)
     if data is None:
       # self.response.set_status(500, "Can't make PNG for %r" % name)
-      with open('tile_crosshairs.png') as f: data = f.read()
+      with open('tile_crosshairs.png') as f:
+        data = f.read()
+        # since we didn't have it cached in db or memory before store in both
+        memcache.add(name, data)
+        persist_tile(name, data)
       # return
     self.response.headers['Content-Type'] = 'image/png'
     self.response.out.write(data)
@@ -100,7 +109,7 @@ class TileHandler(webapp.RequestHandler):
       return
     data = self.request.body
     tile = models.Tile(name=name, data=data)
-    tile.put() 
+    tile.put()
     self.response.out.write("%r created successfully." % name)
 
 def main():
