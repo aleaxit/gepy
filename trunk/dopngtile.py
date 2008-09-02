@@ -2,12 +2,14 @@
 """
 from __future__ import with_statement
 
+import logging
 import os
 import sys
 
 import tile
 import pypng
 import shpextract
+sbb = shpextract.showbb
 
 ZOOM = 12
 
@@ -19,12 +21,15 @@ s = None
 def do_tile(xt, yt, zoom, name=None):
   # print>>sys.stderr, ' Creating file %s' % name
   minlat, minlon, maxlat, maxlon = m.TileLatLonBounds(xt, yt, zoom)
+  logging.info('Tile %s/%s/%s bounds %s',
+    xt, yt, zoom, sbb((minlat,minlon,maxlat,maxlon)))
   # print 'Til bnds:', minlat, minlon, maxlat, maxlon
   # print>>sys.stderr, ' BB:', minlat, minlon, maxlat, maxlon
   s.set_select_bbox((minlat, minlon, maxlat, maxlon))
   s.rewind()
   # note min/max lon must be swapped in PNG drawing to get the Y axis right!
-  png = pypng.PNG(minlat, maxlon, maxlat, minlon)
+  # png = pypng.PNG(minlat, maxlon, maxlat, minlon)
+  png = pypng.PNG(minlat, minlon, maxlat, maxlon)
   red = png.get_color(255, 0, 0)
   for r in s:
     # if r[0] != '94303': continue
@@ -55,8 +60,22 @@ def what_tiles(zoom, minlat, minlon, maxlat, maxlon):
       do_tile(xt, yt, zoom, name)
 
 def tile_coords_generator(zoom, minlat, minlon, maxlat, maxlon):
+  logging.info('Tiles covering %s',
+      sbb((minlat,minlon,maxlat,maxlon)))
+  meters = m.LatLonToMeters(minlat, minlon)
   minx_tile, miny_tile = m.LatLonToTile(minlat, minlon, zoom)
+  tmila, tmilo, tmala, tmalo = m.TileLatLonBounds(minx_tile, miny_tile, zoom)
+  tilemeters = m.TileBounds(minx_tile, miny_tile, zoom)
+  logging.info('%s cov by %s', sbb((minlat,minlon)),
+      sbb((tmila,tmilo,tmala,tmalo)))
+  logging.info('in m, %s cov by %s', sbb(meters), sbb(tilemeters))
+
   maxx_tile, maxy_tile = m.LatLonToTile(maxlat, maxlon, zoom)
+  tmila, tmilo, tmala, tmalo = m.TileLatLonBounds(minx_tile, miny_tile, zoom)
+  logging.info('%s cov by %s', sbb((maxlat,maxlon)),
+      sbb((tmila,tmilo,tmala,tmalo)))
+  logging.info('Tiles x=%s:%s, y=%s:%s',
+      minx_tile, maxx_tile, miny_tile, maxy_tile)
   for xt in range(minx_tile, maxx_tile+1):
     for yt in range(miny_tile, maxy_tile+1):
       gxt, gyt = m.GoogleTile(xt, yt, zoom)
