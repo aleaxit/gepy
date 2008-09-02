@@ -25,6 +25,7 @@ def finis_thread_pool():
   for t in thread_pool:
     t.join()
 
+
 def uploading_thread():
   try: conn = httplib.HTTPConnection(host, port, strict=True)
   except socket.error, e:
@@ -43,7 +44,8 @@ def uploading_thread():
       logging.error("Cannot POST: %s", e)
       return
     rl = conn.getresponse()
-    logging.info('POST to %s gave: %s %r', path, rl.status, rl.reason)
+    logging.info('%s: %s %r', path, rl.status, rl.reason)
+
 
 def upload(name, data):
   logging.info('Queueing %r (%d bytes) for upload', name, len(data))
@@ -52,25 +54,25 @@ def upload(name, data):
 def main():
   logging.basicConfig(format='%(levelname)s: %(message)s')
   logger = logging.getLogger()
-  logger.setLevel(logging.DEBUG)
+  logger.setLevel(logging.INFO)
 
   start_thread_pool()
 
-  SW = (15.19939,-126.03516)
-  NE = (50.90303,-64.51172)
+  SW = (13.19939,-128.03516)
+  NE = (52.90303,-62.51172)
   name_format = 'tile_USA_%s_%s_%s'
  
   dopngtile.s = s = shpextract.Shp('fe_2007_us_state/fe_2007_us_state.shp',
                        id_field_name='STUSPS', id_check=lambda x: True)
   logging.info('USA bbox: %s', shpextract.showbb(s.overall_bbox))
   usabb = SW[0], SW[1], NE[0], NE[1]
-  for zoom in range(3, 4):
+  for zoom in range(3, 8):
     n = 0
     for gx, gy, x, y, z in dopngtile.tile_coords_generator(
         zoom, *usabb):
       # logging.info('z=%s: tile(%s,%s)=google(%s,%s)', z, x, y, gx, gy)
       n += 1
-    print 'Zoom %d: up to %d tiles' % (zoom, n)
+    logging.info('Zoom %d: up to %d tiles', zoom, n)
     n = 0
     for gx, gy, x, y, z in dopngtile.tile_coords_generator(
         zoom, *usabb):
