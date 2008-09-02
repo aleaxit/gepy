@@ -17,13 +17,14 @@ m = tile.GlobalMercator()
 s = None
 
 def do_tile(xt, yt, zoom, name=None):
-  print>>sys.stderr, ' Creating file %s' % name
+  # print>>sys.stderr, ' Creating file %s' % name
   minlat, minlon, maxlat, maxlon = m.TileLatLonBounds(xt, yt, zoom)
-  print>>sys.stderr, ' BB:', minlat, minlon, maxlat, maxlon
-  s.set_select_bbox((minlon, minlat, maxlon, maxlat))
+  # print 'Til bnds:', minlat, minlon, maxlat, maxlon
+  # print>>sys.stderr, ' BB:', minlat, minlon, maxlat, maxlon
+  s.set_select_bbox((minlat, minlon, maxlat, maxlon))
   s.rewind()
-  # note min/max lat must be swapped in PNG drawing to get the Y axis right!
-  png = pypng.PNG(minlon, maxlat, maxlon, minlat)
+  # note min/max lon must be swapped in PNG drawing to get the Y axis right!
+  png = pypng.PNG(minlat, maxlon, maxlat, minlon)
   red = png.get_color(255, 0, 0)
   for r in s:
     # if r[0] != '94303': continue
@@ -52,6 +53,14 @@ def what_tiles(zoom, minlat, minlon, maxlat, maxlon):
         print>>sys.stderr, 'File %s already exists, skipping' % name
         continue
       do_tile(xt, yt, zoom, name)
+
+def tile_coords_generator(zoom, minlat, minlon, maxlat, maxlon):
+  minx_tile, miny_tile = m.LatLonToTile(minlat, minlon, zoom)
+  maxx_tile, maxy_tile = m.LatLonToTile(maxlat, maxlon, zoom)
+  for xt in range(minx_tile, maxx_tile+1):
+    for yt in range(miny_tile, maxy_tile+1):
+      gxt, gyt = m.GoogleTile(xt, yt, zoom)
+      yield gxt, gyt, xt, yt, zoom
 
 def main():
   global s
