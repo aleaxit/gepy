@@ -25,15 +25,14 @@ def do_tile(xt, yt, zoom, name=None):
     xt, yt, zoom, sbb((minlat,minlon,maxlat,maxlon)))
   # print 'Til bnds:', minlat, minlon, maxlat, maxlon
   # print>>sys.stderr, ' BB:', minlat, minlon, maxlat, maxlon
-  s.set_select_bbox((minlat, minlon, maxlat, maxlon))
+  # careful with the order of params to s: it wants lon, lat (x, y) order!
+  s.set_select_bbox((minlon, minlat, maxlon, maxlat))
   s.rewind()
-  # note min/max lon must be swapped in PNG drawing to get the Y axis right!
-  # png = pypng.PNG(minlat, maxlon, maxlat, minlon)
-  png = pypng.PNG(minlat, minlon, maxlat, maxlon)
+  # note min/max lat must be swapped in PNG drawing to get the Y axis right!
+  # also, lat=y axis, lon=y axis, so careful with the arguments order...!!!
+  png = pypng.PNG(minlon, maxlat, maxlon, minlat)
   red = png.get_color(255, 0, 0)
   for r in s:
-    # if r[0] != '94303': continue
-    # print 'drawing 94303...'
     for d in r[1:]:
       png.polyline(d, red)
   data = png.dump()
@@ -60,18 +59,17 @@ def what_tiles(zoom, minlat, minlon, maxlat, maxlon):
       do_tile(xt, yt, zoom, name)
 
 def tile_coords_generator(zoom, minlat, minlon, maxlat, maxlon):
-  logging.info('Tiles covering %s',
-      sbb((minlat,minlon,maxlat,maxlon)))
+  logging.info('Tiles covering %s', sbb((minlat,minlon,maxlat,maxlon)))
   meters = m.LatLonToMeters(minlat, minlon)
   minx_tile, miny_tile = m.LatLonToTile(minlat, minlon, zoom)
   tmila, tmilo, tmala, tmalo = m.TileLatLonBounds(minx_tile, miny_tile, zoom)
-  tilemeters = m.TileBounds(minx_tile, miny_tile, zoom)
   logging.info('%s cov by %s', sbb((minlat,minlon)),
       sbb((tmila,tmilo,tmala,tmalo)))
-  logging.info('in m, %s cov by %s', sbb(meters), sbb(tilemeters))
+  # tilemeters = m.TileBounds(minx_tile, miny_tile, zoom)
+  # logging.info('in m, %s cov by %s', sbb(meters), sbb(tilemeters))
 
   maxx_tile, maxy_tile = m.LatLonToTile(maxlat, maxlon, zoom)
-  tmila, tmilo, tmala, tmalo = m.TileLatLonBounds(minx_tile, miny_tile, zoom)
+  tmila, tmilo, tmala, tmalo = m.TileLatLonBounds(maxx_tile, maxy_tile, zoom)
   logging.info('%s cov by %s', sbb((maxlat,maxlon)),
       sbb((tmila,tmilo,tmala,tmalo)))
   logging.info('Tiles x=%s:%s, y=%s:%s',
