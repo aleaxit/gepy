@@ -11,9 +11,12 @@ import shpextract
 
 ZOOM = 12
 
+# unique global Mercator calculator
 m = tile.GlobalMercator()
+# current global SHP object
+s = None
 
-def do_tile(xt, yt, zoom, name):
+def do_tile(xt, yt, zoom, name=None):
   print>>sys.stderr, ' Creating file %s' % name
   minlat, minlon, maxlat, maxlon = m.TileLatLonBounds(xt, yt, zoom)
   print>>sys.stderr, ' BB:', minlat, minlon, maxlat, maxlon
@@ -27,8 +30,11 @@ def do_tile(xt, yt, zoom, name):
     # print 'drawing 94303...'
     for d in r[1:]:
       png.polyline(d, red)
-  with open(name, 'wb') as f:
-    f.write(png.dump())
+  data = png.dump()
+  if name is not None:
+    with open(name, 'wb') as f:
+      f.write(data)
+  return data
 
 def what_tiles(zoom, minlat, minlon, maxlat, maxlon):
   print>>sys.stderr, 'tiles for', minlat, minlon, maxlat, maxlon
@@ -63,14 +69,14 @@ def onetile(x, y, z, name):
   global s
   s = shpextract.Shp('ca/zt06_d00.shp', id_field_name='ZCTA')
   gx, gy = m.GoogleTile(x, y, z)
-  do_tile(gx, gy, z, name)
+  return do_tile(gx, gy, z, name)
 
 def usatile(x, y, z, name):
   global s
   s = shpextract.Shp('fe_2007_us_state/fe_2007_us_state.shp',
                      id_field_name='STUSPS', id_check=lambda x: True)
   gx, gy = m.GoogleTile(x, y, z)
-  do_tile(gx, gy, z, name)
+  return do_tile(gx, gy, z, name)
 
 if __name__ == '__main__':
   main()
