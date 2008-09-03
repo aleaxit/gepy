@@ -6,14 +6,25 @@ import dbfUtils
 
 
 def main():
-  if len(sys.argv) != 2:
-    print "usage: %s filename.dbf" % (sys.argv[0])
+  l = len(sys.argv)
+  if l not in (2, 3):
+    print 'usage: %s filename.dbf [field]' % (sys.argv[0])
     sys.exit(1)
   with open(sys.argv[1], 'rb') as dbf:
     dbr = dbfUtils.dbfreader(dbf)
     field_names = dbr.next()
     field_specs = dbr.next()
     _db = list(dbr)
+  if l == 3:
+    thefield = sys.argv[2]
+    if thefield not in field_names:
+      print 'field %r not in file %r' % (thefield, sys.argv[1])
+      sys.exit(2)
+    fieldidx = field_names.index(thefield)
+    for record in _db:
+      print record[fieldidx].strip(),
+    print
+    sys.exit(0)
   print field_names
   print field_specs
   print len(_db), 'total records'
