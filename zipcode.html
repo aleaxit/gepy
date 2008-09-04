@@ -1,0 +1,40 @@
+<!DOCTYPE html "-//W3C//DTD XHTML 1.0 Strict//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>Google Maps JavaScript API Example</title>
+<script
+  src="http://maps.google.com/maps?file=api&amp;v=2&amp;key=ABQIAAAA5lJ1e7QDn52uWWa6UESJ7xRLlbfAVwXB097wyqCsCWCmf5YHLRTKvIRleYZmdgmjionXTkDnMoyObQ"
+  type="text/javascript"></script>
+<script
+  src="http://nicogoeminne.googlepages.com/greversegeocoderv107.js"
+  type="text/javascript"></script>
+<script type="text/javascript">
+  var map;
+  var reversegeocoder;
+  function initialize() {
+    if (GBrowserIsCompatible()) {
+      var map = new GMap2(document.getElementById("map_canvas"));
+      map.setCenter(new GLatLng(32.91219816531442, -96.5524435043335),13);
+      map.addControl(new GLargeMapControl());
+      reversegeocoder = new GReverseGeocoder(map);
+      GEvent.addListener(reversegeocoder, "load", success);
+      GEvent.addListener(map, "click", getAddress);
+    }
+  }
+
+  function getAddress(marker, point) {
+    reversegeocoder.reverseGeocode(point);
+  }
+
+  function success(marker) {
+    var zip = reversegeocoder.getPlacemarkProperty(marker, "PostalCodeNumber");
+    alert(zip);
+  }
+</script>
+</head>
+<body onload="initialize()" onunload="GUnload()">
+<div id="map_canvas" style="width: 500px; height: 300px"></div>
+</body>
+</html>
