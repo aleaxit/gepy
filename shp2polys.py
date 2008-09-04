@@ -39,6 +39,8 @@ import zipfile
 import shpextract
 import tile
 
+m = tile.GlobalMercator()
+
 # ensure all arrays are little-endian
 if shpextract.big_endian:
   def normalize_arrays(*arrays):
@@ -47,6 +49,7 @@ else:
   def normalize_arrays(*arrays): pass
 
 def merge_bbox(bb, obb, mima=(min,min,max,max)):
+  logging.debug(' MrgBB %s', ' '.join('%.2f'%x for x in obb))
   for i in range(4): bb[i] = mima[i](bb[i], obb[i])
 
 class Converter(object):
@@ -62,7 +65,6 @@ class Converter(object):
   def __init__(self):
     self.shp = shpextract.Shp(self.infile, None, self.nameid, self.valid)
     self.zip = zipfile.ZipFile(self.oufile, 'w', zipfile.ZIP_DEFLATED)
-    self.m = tile.GlobalMercator()
     self.idnum_by_idvalue = dict()
     self._closed = False
 
@@ -73,7 +75,7 @@ class Converter(object):
     self._closed = True
 
   def doit(self):
-    ll2m = self.m.LatLonToMeters
+    ll2m = m.LatLonToMeters
     def recno_id_bbox_data(s=self.shp):
       i = 0
       while True:
@@ -109,12 +111,14 @@ class Converter(object):
       logging.debug('%s (%d): %d@%d', id, idnum, numparts, total_length)
 
       for p in indata:
-        lats = iter(p)
+        lons = iter(p)
         oudata = array.array('l', [0]*len(p))
         i = 0
-        for lat in lats:
-          lon = lats.next()
+        for lon in lons:
+          lat = lons.next()
           x, y = ll2m(lat, lon)
+          if i==0:
+            logging.debug(' Lalo=(%.2f %.2f) xy=(%.2f %.2f)', lat, lon, x, y)
           try:
             oudata[i] = int(x)
             oudata[i+1] = int(y)
@@ -134,12 +138,13 @@ class Converter(object):
     self.zip.writestr('ids.txt', out.getvalue())
     out.close()
 
+    logging.debug(' OvaBB %s', ' '.join('%.2f'%x for x in overall_bbox))
     out = cStringIO.StringIO()
     bbout = array.array('l')
-    x, y = ll2m(overall_bbox[0], overall_bbox[1])
+    x, y = ll2m(overall_bbox[1], overall_bbox[0])
     bbout.append(int(x))
     bbout.append(int(y))
-    x, y = ll2m(overall_bbox[2], overall_bbox[3])
+    x, y = ll2m(overall_bbox[3], overall_bbox[2])
     bbout.append(int(x))
     bbout.append(int(y))
     normalize_arrays(bbout)
@@ -156,12 +161,41 @@ def setlogging(level=logging.DEBUG):
     logger.setLevel(level)
 
 
+class PolyReader(object):
+  infile = 'cont_us_state.ply'
+
+  def __init__(self):
+    self.zip = zipfile.ZipFile(self.infile, 'r')
+    self._closed = False
+    self.zoom = 4
+
+  def close(self):
+    if self._closed: return
+    self.zip.close()
+    self._closed = True
+
+  def setzoom(self, zoom):
+    self.zoom = zoom
+
+  def get_tiles_ranges(self):
+    bb = array.array('l')
+    filedata = self.zip.read('bbox.bin')
+    bb.fromstring(filedata)
+    logging.debug('BB: %s', list(bb))
+    mintx, minty = m.MetersToTile(bb[0], bb[1], self.zoom) 
+    maxtx, maxty = m.MetersToTile(bb[2], bb[3], self.zoom) 
+    return mintx, minty, maxtx, maxty
+ 
+
 if __name__ == '__main__':
 
   def main():
     setlogging()
     c = Converter()
     c.doit()
+    r = PolyReader()
+    bb = r.get_tiles_ranges()
+    print 'zoom %s: tiles %s' % (r.zoom, bb)
 
   main()
 
