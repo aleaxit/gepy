@@ -39,11 +39,12 @@ import zipfile
 import shpextract
 import tile
 
+# ensure all arrays are little-endian
 if shpextract.big_endian:
-  def normalize_arrays(*arrays): pass
-else:
   def normalize_arrays(*arrays):
     for a in arrays: a.byteswap()
+else:
+  def normalize_arrays(*arrays): pass
 
 def merge_bbox(bb, obb, mima=(min,min,max,max)):
   for i in range(4): bb[i] = mima[i](bb[i], obb[i])
@@ -148,13 +149,17 @@ class Converter(object):
 
     self.close()
 
+
+def setlogging(level=logging.DEBUG):
+    logging.basicConfig(format='%(levelname)s: %(message)s')
+    logger = logging.getLogger()
+    logger.setLevel(level)
+
+
 if __name__ == '__main__':
 
   def main():
-    logging.basicConfig(format='%(levelname)s: %(message)s')
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-
+    setlogging()
     c = Converter()
     c.doit()
 
