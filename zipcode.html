@@ -13,24 +13,35 @@
 <script type="text/javascript">
   var map;
   var reversegeocoder;
+  var geocoded_point;
   function initialize() {
     if (GBrowserIsCompatible()) {
-      var map = new GMap2(document.getElementById("map_canvas"));
+      map = new GMap2(document.getElementById("map_canvas"));
       map.setCenter(new GLatLng(32.91219816531442, -96.5524435043335),13);
       map.addControl(new GLargeMapControl());
       reversegeocoder = new GReverseGeocoder(map);
       GEvent.addListener(reversegeocoder, "load", success);
+      GEvent.addListener(reversegeocoder, "error", failure);
       GEvent.addListener(map, "click", getAddress);
     }
   }
 
   function getAddress(marker, point) {
     reversegeocoder.reverseGeocode(point);
+    geocoded_point = point;
   }
 
   function success(marker) {
     var zip = reversegeocoder.getPlacemarkProperty(marker, "PostalCodeNumber");
-    alert(zip);
+    if (zip) {
+      map.openInfoWindowHtml(geocoded_point, "<b>Zip Code:</b> " + zip);
+    } else {
+      failure(marker);
+    }
+  }
+
+  function failure(marker) {
+    map.openInfoWindowHtml(geocoded_point, "No zip code data was found for this location");
   }
 </script>
 </head>
