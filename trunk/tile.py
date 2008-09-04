@@ -105,7 +105,7 @@ class GlobalMercator(object):
     py = (my + self.originShift) / res
     return px, py
 
-  def PixelsToTile(self, px, py, zoom):
+  def PixelsToTile(self, px, py):
     "Returns a tile covering region in given pixel coordinates"
     tx = int( math.ceil( px / float(self.tileSize) ) - 1 )
     ty = int( math.ceil( py / float(self.tileSize) ) - 1 )
@@ -119,7 +119,7 @@ class GlobalMercator(object):
   def MetersToTile(self, mx, my, zoom):
     "Returns tile for given mercator coordinates"
     px, py = self.MetersToPixels(mx, my, zoom)
-    return self.PixelsToTile(px, py, zoom)
+    return self.PixelsToTile(px, py)
 
   def LatLonToTile(self, lat, lon, zoom):
     "Returns tile for given lat/lon in WGS84 Datum"
