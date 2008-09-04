@@ -21,12 +21,14 @@ Running this module as a script performs the following operation:
 
 A Polyfile is a zipfile with the following internal organization:
      ids.txt: textfile, each line '<idstring> <idnumber>\n'
+     bbox.bin: 4 little-endian 4 bytes ints: bounding box for the whole
+       file, meters, in order minx, miny, maxx, maxy
    and a collection of little-end bin files named <idstring>_<recno>.pol, each:
      (4-byte ints...):
      3 unsigned ints: idnum, numparts, totleng
      numparts unsigned ints: starts of each part
      numparts unsigned ints: lengts of each part
-     totleng signed ints: x then y for each point in each part
+     totleng signed ints: x then y for each point in each part (meters)
 """
 import array
 import cStringIO
@@ -42,6 +44,9 @@ if shpextract.big_endian:
 else:
   def normalize_arrays(*arrays):
     for a in arrays: a.byteswap()
+
+def merge_bbox(bb, obb, mima=(min,min,max,max)):
+  for i in range(4): bb[i] = mima[i](bb[i], obb[i])
 
 class Converter(object):
   """ Performs Shapefile -> Polyfile conversion. """
@@ -68,11 +73,25 @@ class Converter(object):
 
   def doit(self):
     ll2m = self.m.LatLonToMeters
-    for recno, indata in enumerate(self.shp):
-      id = indata.pop(0)
+    def recno_id_bbox_data(s=self.shp):
+      i = 0
+      while True:
+        rec = s.get_next_record(bbox=1)
+        if rec is None: return
+        yield i, rec[0], rec[1], rec[2:]
+        i += 1
+
+    class Extreme(object):
+      def __init__(self, allcmp): self.allcmp = allcmp
+      def __cmp__(self, other): return self.allcmp
+    High = Extreme(1); Low = Extreme(-1)
+    overall_bbox = [High, High, Low, Low]
+
+    for recno, id, bbox, indata in recno_id_bbox_data():
       if id not in self.idnum_by_idvalue:
         self.idnum_by_idvalue[id] = len(self.idnum_by_idvalue)
       idnum = self.idnum_by_idvalue[id]
+      merge_bbox(overall_bbox, bbox)
       numparts = len(indata)
       parts_starts = array.array('L', [0])
       parts_lengths = array.array('L')
@@ -106,12 +125,27 @@ class Converter(object):
         out.write(oudata.tostring())
       self.zip.writestr('%s_%d.pol' % (id, recno), out.getvalue())
       out.close()
+
     out = cStringIO.StringIO()
     for id in sorted(self.idnum_by_idvalue):
       idnum = self.idnum_by_idvalue[id]
       out.write('%s %d\n' % (id, idnum))
     self.zip.writestr('ids.txt', out.getvalue())
     out.close()
+
+    out = cStringIO.StringIO()
+    bbout = array.array('l')
+    x, y = ll2m(overall_bbox[0], overall_bbox[1])
+    bbout.append(int(x))
+    bbout.append(int(y))
+    x, y = ll2m(overall_bbox[2], overall_bbox[3])
+    bbout.append(int(x))
+    bbout.append(int(y))
+    normalize_arrays(bbout)
+    out.write(bbout.tostring())
+    self.zip.writestr('bbox.bin', out.getvalue())
+    out.close()
+
     self.close()
 
 if __name__ == '__main__':
