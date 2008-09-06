@@ -23,10 +23,10 @@ class Reverse(webapp.RequestHandler):
         zip = zips[0]['postalCode']
         logging.log(logging.INFO, zip)
       except KeyError, e:
-        zips = "key error"
+        zip = "Not available"
       self.response.out.write(zip)
     else:
-      self.response.out.write("It blowed up!")
+      self.response.out.write("Not available")
 
 def application():
     return webapp.WSGIApplication([('/reverse', Reverse)], debug=True)
