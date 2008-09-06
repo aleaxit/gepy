@@ -35,8 +35,8 @@ def main():
   for zoom in range(MIN_ZOOM, MAX_ZOOM+1):
     r = shp2polys.PolyReader(zoom)
     bb = r.get_tiles_ranges()
-    logging.info('zoom %s: tiles %s', r.zoom, bb)
     size = 256*(bb[2]-bb[0]+1), 256*(bb[3]-bb[1]+1)
+    logging.info('zoom %s: tiles %s, size %s', r.zoom, bb, size)
     palette = [255]*3 + [255, 0, 0] + [0, 255, 0]
     white = 0
     red = 1
@@ -44,21 +44,25 @@ def main():
     im = Image.new('P', size, white)
     im.putpalette(palette)
 
-    matrix = m.getMetersToPixelsXform(zoom)
+    matrix = m.getMetersToPixelsXform(zoom, bb)
     font = ImageFont.truetype('/Library/Fonts/ChalkboardBold.ttf', 24)
     draw = ImageDraw.Draw(im)
     for name, bbox, starts, lengths, meters in r:
       # print name, s(starts), s(lengths), len(meters), s(bbox)
-      p = ImagePath.Path(list(bbox))
-      print 'bef:', s(p.tolist(1))
+      p = ImagePath.Path(bbox)
+      # print 'bef:', s(p.tolist(1))
       p.transform(matrix)
-      print 'aft:', s(p.tolist(1))
+      # print 'aft:', s(p.tolist(1))
       tsz = draw.textsize(name, font=font)
       tdc = [(p[1][i]+p[0][i]-tsz[i])/2.0 for i in (0,1)]
-      print 'txt:', tsz, s(p.tolist(1)), tdc
-      # draw.text(tdc, name, fill=red, font=font)
+      # logging.info('txt %s: %s %s %s', name, tsz, s(p.tolist(1)), s(tdc))
+      draw.text(tdc, name, fill=green, font=font)
+      for s, l in zip(starts, lengths):
+        p = ImagePath.Path(meters[s:s+l])
+        p.transform(matrix)
+        draw.polygon(p, outline=red)
     del draw 
-    sys.exit(0)
+    # sys.exit(0)
 
     im.save("USA.PNG", transparency=white)
     os.system("open USA.PNG")

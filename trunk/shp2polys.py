@@ -192,7 +192,8 @@ class PolyReader(object):
         lengths.fromstring(filedata[28+4*numparts:28+8*numparts])
         meters = array.array('l')
         meters.fromstring(filedata[28+8*numparts:28+8*numparts+4*totleng])
-        yield self.name_by_num[idnum], bbox, starts, lengths, meters
+        yield (self.name_by_num[idnum], list(bbox),
+               list(starts), list(lengths), list(meters))
     return prg()
 
   def close(self):
@@ -208,6 +209,10 @@ class PolyReader(object):
     filedata = self.zip.read('bbox.bin')
     bb.fromstring(filedata)
     logging.debug('BB: %s', list(bb))
+    minpx, minpy = m.MetersToPixels(bb[0], bb[1], self.zoom) 
+    maxpx, maxpy = m.MetersToPixels(bb[2], bb[3], self.zoom) 
+    logging.debug('PX: %s, %s, %s, %s', minpx, minpy, maxpx, maxpy)
+
     mintx, minty = m.MetersToTile(bb[0], bb[1], self.zoom) 
     maxtx, maxty = m.MetersToTile(bb[2], bb[3], self.zoom) 
     return mintx, minty, maxtx, maxty
