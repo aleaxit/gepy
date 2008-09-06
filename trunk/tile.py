@@ -116,8 +116,8 @@ class GlobalMercator(object):
       i.e.: 1/res, 0, originShift/res twice (res depends on zoom!)
     """
     ires = 1.0 / self.Resolution(zoom)
-    print (ires, 0.0, self.originShift * ires) * 2
-    return (ires, 0.0, self.originShift * ires) * 2
+    delta = self.originShift * ires
+    return ires, 0.0, delta, 0.0, ires, delta
 
   def PixelsToTile(self, px, py):
     "Returns a tile covering region in given pixel coordinates"
