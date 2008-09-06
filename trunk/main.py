@@ -4,17 +4,28 @@ from __future__ import with_statement
 import cgi
 import logging
 import wsgiref.handlers
+import zipfile
 from google.appengine.ext import webapp
 from google.appengine.api import memcache
 
 import dopngtile
 import models
 
+thezip = None
+def fromzip(name, x, y, z, unused_lastarg):
+  global thezip
+  if thezip is None: thezip = zipfile.ZipFile('tiles.zip', 'r')
+  name += '.png'
+  logging.info('From zip: %s', name)
+  try:
+    return thezip.read(name)
+  except KeyError:
+    return None
 
 def persist_tile(name, data):
-    tile = models.Tile(name=name, data=data)
-    tile.put()
-    logging.info('%r just made (%d)', name, len(data))
+  tile = models.Tile(name=name, data=data)
+  tile.put()
+  logging.info('%r just made (%d)', name, len(data))
 
 def get_tile(name, x, y, z, maker=None):
   """ Get from cache or store, or make and put in store and cache, a tile.
@@ -23,6 +34,7 @@ def get_tile(name, x, y, z, maker=None):
     name: name of the tile (unique key)
     x, y, z: Google Maps coordinates of the tile
     maker: function that generates and returns the tile (or None)
+           when called with args: name, x, y, z, None
   Returns:
     PNG data for the tile (None if absent and maker was or returned None)
   """
@@ -42,13 +54,14 @@ def get_tile(name, x, y, z, maker=None):
       # nope, generate the tile and put it in the datastore
       if maker is None:
         data = None
-        logging.info('%r not there', name)
       else:
-        data = maker(x, y, z, None)
-        persist_tile(name, data)
-    # tile wasn't in cache, put it there
-    if data:
-      memcache.add(name, data)
+        data = maker(name, x, y, z, None)
+      if data is None:
+        logging.info('%r not there', name)
+        with open('tile_crosshairs.png') as f:
+          data = f.read()
+      persist_tile(name, data)
+    memcache.add(name, data)
     return data
 
 def queryget(query, name):
@@ -82,16 +95,9 @@ class TileHandler(webapp.RequestHandler):
       return
     # temporarily inhibit maker functionality
     maker = None
-    name = 'tile_%s_%s_%s_%s' % (png, x, y, z)
+    maker = fromzip
+    name = 'tile_%s_%s_%s_%s' % (png, z, x, y)
     data = get_tile(name, x, y, z, maker)
-    if data is None:
-      # self.response.set_status(500, "Can't make PNG for %r" % name)
-      with open('tile_crosshairs.png') as f:
-        data = f.read()
-        # since we didn't have it cached in db or memory before store in both
-        memcache.add(name, data)
-        persist_tile(name, data)
-      # return
     self.response.headers['Content-Type'] = 'image/png'
     self.response.out.write(data)
 
