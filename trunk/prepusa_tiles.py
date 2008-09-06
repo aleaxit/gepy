@@ -1,6 +1,9 @@
 """ Prepare tiles for US state boundaries and place them in a SQLite DB for
     future upload.
 """
+from __future__ import with_statement
+
+import cStringIO
 import logging
 import os
 import sqlite3
@@ -29,7 +32,8 @@ def main():
   conn.commit()
   
   name_format = 'tile_USA_%s_%s_%s'
-  MIN_ZOOM = 3; MAX_ZOOM = 3
+  MIN_ZOOM = 3
+  MAX_ZOOM = 5
   m = tile.GlobalMercator()
 
   for zoom in range(MIN_ZOOM, MAX_ZOOM+1):
@@ -62,10 +66,30 @@ def main():
         p.transform(matrix)
         draw.polygon(p, outline=red)
     del draw 
-    # sys.exit(0)
 
-    im.save("USA.PNG", transparency=white)
-    os.system("open USA.PNG")
+    # save all tiles
+    for tx in range(bb[0], bb[2]+1):
+      left = (tx-bb[0]) * 256
+      right = left+255
+      for ty in range(bb[1], bb[3]+1):
+        top = (bb[3]-ty) * 256
+        bottom = top+255
+        tileim = im.crop((left, top, right, bottom))
+        if tileim.getbbox() is None:
+          logging.debug('Skip empty tile %s/%s', tx, ty)
+          continue
+        gtx, gty = m.GoogleTile(tx, ty, zoom)
+        name = name_format % (zoom, gtx, gty)
+        out = cStringIO.StringIO()
+        tileim.save(out, format='PNG', transparency=white)
+        data = out.getvalue()
+        out.close()
+        c.execute('INSERT INTO tiles VALUES (:1, :2, :3)', (name, data, ''))
+        conn.commit()
+        with open('/tmp/%s.png'%name, 'wb') as f:
+          f.write(data)
+
+    # im.save("USA%s.PNG" % zoom, transparency=white)
 
 main()
 
