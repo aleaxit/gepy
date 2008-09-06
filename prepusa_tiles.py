@@ -1,12 +1,13 @@
 """ Prepare tiles for US state boundaries and place them in a SQLite DB for
     future upload.
+    (Currently prepares files in /tmp/ instead).
 """
 from __future__ import with_statement
 
 import cStringIO
 import logging
 import os
-import sqlite3
+# import sqlite3
 import sys
 
 from PIL import Image, ImageDraw, ImageFont, ImagePath
@@ -22,18 +23,18 @@ def s(aray):
 def main():
   shp2polys.setlogging()
 
-  conn = sqlite3.connect('usatiles')
-  conn.text_factory = str
-  c = conn.cursor()
+  # conn = sqlite3.connect('usatiles')
+  # conn.text_factory = str
+  # c = conn.cursor()
   # Create table (if not already there)
-  c.execute('''CREATE TABLE IF NOT EXISTS tiles (name TEXT PRIMARY KEY, 
-                                                 data BLOB, uploaded_to TEXT)
-            ''')
-  conn.commit()
+  # c.execute('''CREATE TABLE IF NOT EXISTS tiles (name TEXT PRIMARY KEY, 
+  #                                                data BLOB, uploaded_to TEXT)
+  #           ''')
+  # conn.commit()
   
   name_format = 'tile_USA_%s_%s_%s'
   MIN_ZOOM = 3
-  MAX_ZOOM = 5
+  MAX_ZOOM = 15
   m = tile.GlobalMercator()
 
   for zoom in range(MIN_ZOOM, MAX_ZOOM+1):
@@ -49,18 +50,18 @@ def main():
     im.putpalette(palette)
 
     matrix = m.getMetersToPixelsXform(zoom, bb)
-    font = ImageFont.truetype('/Library/Fonts/ChalkboardBold.ttf', 24)
+    # font = ImageFont.truetype('/Library/Fonts/ChalkboardBold.ttf', 24)
     draw = ImageDraw.Draw(im)
     for name, bbox, starts, lengths, meters in r:
       # print name, s(starts), s(lengths), len(meters), s(bbox)
-      p = ImagePath.Path(bbox)
+      # p = ImagePath.Path(bbox)
       # print 'bef:', s(p.tolist(1))
-      p.transform(matrix)
+      # p.transform(matrix)
       # print 'aft:', s(p.tolist(1))
-      tsz = draw.textsize(name, font=font)
-      tdc = [(p[1][i]+p[0][i]-tsz[i])/2.0 for i in (0,1)]
+      # tsz = draw.textsize(name, font=font)
+      # tdc = [(p[1][i]+p[0][i]-tsz[i])/2.0 for i in (0,1)]
       # logging.info('txt %s: %s %s %s', name, tsz, s(p.tolist(1)), s(tdc))
-      draw.text(tdc, name, fill=green, font=font)
+      # draw.text(tdc, name, fill=green, font=font)
       for s, l in zip(starts, lengths):
         p = ImagePath.Path(meters[s:s+l])
         p.transform(matrix)
@@ -84,8 +85,8 @@ def main():
         tileim.save(out, format='PNG', transparency=white)
         data = out.getvalue()
         out.close()
-        c.execute('INSERT INTO tiles VALUES (:1, :2, :3)', (name, data, ''))
-        conn.commit()
+        # c.execute('INSERT INTO tiles VALUES (:1, :2, :3)', (name, data, ''))
+        # conn.commit()
         with open('/tmp/%s.png'%name, 'wb') as f:
           f.write(data)
 
