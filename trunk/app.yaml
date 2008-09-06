@@ -7,8 +7,13 @@ handlers:
 - url: /(.*)\.html
   static_files: \1.html
   upload: (.*).html
+
 - url: /
   static_files: gepy.html
   upload: gepy.html
+
+- url: /reverse*
+  script: reverse.py
+
 - url: .*
   script: main.py
