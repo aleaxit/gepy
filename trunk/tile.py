@@ -105,6 +105,20 @@ class GlobalMercator(object):
     py = (my + self.originShift) / res
     return px, py
 
+  def getMetersToPixelsXform(self, zoom):
+    """Returns the 6 parameters to convert meters to pixels by affine transform.
+
+    An affine transform is given by 2 equations:
+      out_x = a * in_x + b * in_y + c
+      out_y = d * in_x + e * in_y + d
+    Returns:
+      a, b, c, d, e, f  when in_x, in_y are meters, out_x, out_y are pixels
+      i.e.: 1/res, 0, originShift/res twice (res depends on zoom!)
+    """
+    ires = 1.0 / self.Resolution(zoom)
+    print (ires, 0.0, self.originShift * ires) * 2
+    return (ires, 0.0, self.originShift * ires) * 2
+
   def PixelsToTile(self, px, py):
     "Returns a tile covering region in given pixel coordinates"
     tx = int( math.ceil( px / float(self.tileSize) ) - 1 )

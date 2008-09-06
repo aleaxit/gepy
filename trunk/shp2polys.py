@@ -26,8 +26,9 @@ A Polyfile is a zipfile with the following internal organization:
    and a collection of little-end bin files named <idstring>_<recno>.pol, each:
      (4-byte ints...):
      3 unsigned ints: idnum, numparts, totleng
+     4 signed ints: bbox for the file (minx, miny, maxx, maxy)
      numparts unsigned ints: starts of each part
-     numparts unsigned ints: lengts of each part
+     numparts unsigned ints: lengths of each part
      totleng signed ints: x then y for each point in each part (meters)
 """
 import array
@@ -51,6 +52,19 @@ else:
 def merge_bbox(bb, obb, mima=(min,min,max,max)):
   logging.debug(' MrgBB %s', ' '.join('%.2f'%x for x in obb))
   for i in range(4): bb[i] = mima[i](bb[i], obb[i])
+
+def encode_bbox(bbox):
+  ll2m = m.LatLonToMeters
+  bbout = array.array('l')
+  for i in (0, 2):
+    x, y = ll2m(bbox[i+1], bbox[i])
+    bbout.append(int(x))
+    bbout.append(int(y))
+  normalize_arrays(bbout)
+  out = cStringIO.StringIO()
+  out.write(bbout.tostring())
+  try: return out.getvalue()
+  finally: out.close()
 
 class Converter(object):
   """ Performs Shapefile -> Polyfile conversion. """
@@ -105,6 +119,7 @@ class Converter(object):
       normalize_arrays(parts_starts, parts_lengths)
       out = cStringIO.StringIO()
       out.write(struct.pack('<LLL', idnum, numparts, total_length))
+      out.write(encode_bbox(bbox))
       out.write(parts_starts.tostring())
       out.write(parts_lengths.tostring())
 
@@ -139,18 +154,7 @@ class Converter(object):
     out.close()
 
     logging.debug(' OvaBB %s', ' '.join('%.2f'%x for x in overall_bbox))
-    out = cStringIO.StringIO()
-    bbout = array.array('l')
-    x, y = ll2m(overall_bbox[1], overall_bbox[0])
-    bbout.append(int(x))
-    bbout.append(int(y))
-    x, y = ll2m(overall_bbox[3], overall_bbox[2])
-    bbout.append(int(x))
-    bbout.append(int(y))
-    normalize_arrays(bbout)
-    out.write(bbout.tostring())
-    self.zip.writestr('bbox.bin', out.getvalue())
-    out.close()
+    self.zip.writestr('bbox.bin', encode_bbox(overall_bbox))
 
     self.close()
 
@@ -164,10 +168,32 @@ def setlogging(level=logging.DEBUG):
 class PolyReader(object):
   infile = 'cont_us_state.ply'
 
-  def __init__(self):
+  def __init__(self, zoom=4):
     self.zip = zipfile.ZipFile(self.infile, 'r')
     self._closed = False
-    self.zoom = 4
+    self.zoom = zoom
+    names_and_nums = self.zip.read('ids.txt').splitlines()
+    self.name_by_num = dict()
+    for line in names_and_nums:
+      name, num = line.split()
+      self.name_by_num[int(num)] = name
+    self.filenames = [s for s in self.zip.namelist() if s.endswith('.pol')]
+
+  def __iter__(self):
+    def prg():
+      for name in self.filenames:
+        filedata = self.zip.read(name)
+        idnum, numparts, totleng = struct.unpack('<III', filedata[:12])
+        bbox = array.array('l')
+        bbox.fromstring(filedata[12:28])
+        starts = array.array('L')
+        starts.fromstring(filedata[28:28+4*numparts])
+        lengths = array.array('L')
+        lengths.fromstring(filedata[28+4*numparts:28+8*numparts])
+        meters = array.array('l')
+        meters.fromstring(filedata[28+8*numparts:28+8*numparts+4*totleng])
+        yield self.name_by_num[idnum], bbox, starts, lengths, meters
+    return prg()
 
   def close(self):
     if self._closed: return
