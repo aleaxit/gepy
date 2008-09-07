@@ -8,7 +8,6 @@ import zipfile
 from google.appengine.ext import webapp
 from google.appengine.api import memcache
 
-import dopngtile
 import models
 
 thezip = None
@@ -84,18 +83,14 @@ class TileHandler(webapp.RequestHandler):
     query = cgi.parse_qs(self.request.query_string)
     png = queryget(query, 'png')
     x, y, z = (int(queryget(query, n) or -1) for n in 'xyz')
-    # generate tile on-the-fly
+    # generate/produce tile on-the-fly if needed
     if png=='USA':
-      maker = dopngtile.usatile
-    elif png=='ZIP':
-      maker = dopngtile.onetile
+      maker = fromzip
     else:
       # unknown PNG type requested
       self.response.set_status(404, "PNG type %r not found" % png)
       return
     # temporarily inhibit maker functionality
-    maker = None
-    maker = fromzip
     name = 'tile_%s_%s_%s_%s' % (png, z, x, y)
     data = get_tile(name, x, y, z, maker)
     self.response.headers['Content-Type'] = 'image/png'
