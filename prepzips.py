@@ -1,23 +1,23 @@
-""" Prepare ZIP files with tiles, and a text indexfile z/x/y -> zipfile.
+""" Prepare ZIP files with tiles, and an indexfile z/x/y -> zipfile.
 
 Expects to find in /tmp files named tile_<theme>_z_x_y.png where:
   - <theme> is an all-uppercase "theme name" string
   - z, x, y are integers (zoom level and x/y Google tile coordinates)
 Writes, also in /tmp:
   - zipfiles named <theme>_<N>.zip for increasing integers N, each zip <1MB
-  - a sqlite DB named <theme>_tiles.sdb with one table TILE_TO_ZIP with
-    string z_x_y as key and N as value (when tile_<theme>_z_x_y is in
-    zipfile <theme>_N.zip)
+  - a pickled dict with string z_x_y as key and N as value (when
+    tile_<theme>_z_x_y is in zipfile <theme>_N.zip) named <theme>_dict.pik
 Principles of operation:
   - build zipfiles sequentially (sorting filenames numerically theme-z-x-y)
   - keep track of the total (compressed) size of the current zipfile
   - ensure <1MB by checking that the next tile-file would fit UNcompressed (!),
     else close the current zipfile and open a fresh one for the next tile +
 """
+from __future__ import with_statement
+import cPickle
 import glob
 import logging
 import os
-import sqlite3
 import sys
 import zipfile
 
@@ -45,16 +45,12 @@ def main(working_directory='/tmp'):
   filenames = sorted(glob.iglob('tile_*.png'), key=namekey)
   theme, z, x, y = namekey(filenames[0])
   zxy_start = len('tile_%s_' % theme)
-  dbname = '%s_tiles.sdb' % theme
-  logging.info('Processing %d files, creating DB %r', len(filenames), dbname)
-  conn = sqlite3.connect(dbname)
-  conn.isolation_level = None
-  conn.execute("""CREATE TABLE IF NOT EXISTS tile_to_zip
-                  (z_x_y STRING PRIMARY KEY, n INTEGER)
-               """)
+  dbname = '%s_dict.pik' % theme
+  logging.info('Processing %d files, creating index %r', len(filenames), dbname)
   zipnum = 0
   fns = iter(filenames)
   fn = fns.next()
+  index_dict = dict()
   while True:
     zipnum += 1
     zipfna = '%s_%s.zip' % (theme, zipnum)
@@ -66,7 +62,7 @@ def main(working_directory='/tmp'):
       zipfil.write(fn)
       num_tiles_in_zip += 1
       z_x_y = fn[zxy_start:-4]
-      conn.execute("INSERT INTO tile_to_zip VALUES(?,?)", (z_x_y, zipnum))
+      index_dict[z_x_y] = zipfna
       zipinfo = zipfil.getinfo(fn)
       zipsiz += zipinfo.compress_size
       try: fn = fns.next()
@@ -83,7 +79,8 @@ def main(working_directory='/tmp'):
     logging.debug('%d tiles in zip, next tile %s', num_tiles_in_zip, fn)
     if fn is None:
       break
-  conn.close()
+  with open(dbname, 'w') as f:
+    cPickle.dump(index_dict, f)
 
 main()
 
