@@ -5,17 +5,22 @@ import cgi
 import logging
 import wsgiref.handlers
 import zipfile
+from google.appengine.ext import db
 from google.appengine.ext import webapp
 from google.appengine.api import memcache
 
 import models
 
-thezip = None
-def fromzip(name, x, y, z, unused_lastarg):
-  global thezip
-  if thezip is None: thezip = zipfile.ZipFile('tiles.zip', 'r')
+zipnames = dict(USA='tiles', ZIPCA='tiles_zipca')
+thezips = dict()
+def fromzip(png, name, x, y, z, unused_lastarg):
+  thezip = thezips.get(png)
+  zn = zipnames.get(png)
+  if thezip is None:
+    if zn is None: return None
+    thezip = thezips[png] = zipfile.ZipFile('%s.zip'%zn, 'r')
   name += '.png'
-  logging.info('From zip: %s', name)
+  logging.info('From zip: %s in %s', name, zn)
   try:
     return thezip.read(name)
   except KeyError:
@@ -23,17 +28,22 @@ def fromzip(name, x, y, z, unused_lastarg):
 
 def persist_tile(name, data):
   tile = models.Tile(name=name, data=data)
-  tile.put()
-  logging.info('%r just made (%d)', name, len(data))
+  try:
+    tile.put()
+  except db.TransactionFailedError, e:
+    logging.info('%r not stored yet, "%s"', name, e)
+  else:
+    logging.info('%r just made (%d)', name, len(data))
 
-def get_tile(name, x, y, z, maker=None):
+def get_tile(png, name, x, y, z, maker=None):
   """ Get from cache or store, or make and put in store and cache, a tile.
 
   Args:
+    png: name of the PNG family (USA, ZIPCA, &c)
     name: name of the tile (unique key)
     x, y, z: Google Maps coordinates of the tile
     maker: function that generates and returns the tile (or None)
-           when called with args: name, x, y, z, None
+           when called with args: png, name, x, y, z, None
   Returns:
     PNG data for the tile (None if absent and maker was or returned None)
   """
@@ -54,7 +64,7 @@ def get_tile(name, x, y, z, maker=None):
       if maker is None:
         data = None
       else:
-        data = maker(name, x, y, z, None)
+        data = maker(png, name, x, y, z, None)
       if data is None:
         logging.info('%r not there', name)
         with open('tile_crosshairs.png') as f:
@@ -84,7 +94,7 @@ class TileHandler(webapp.RequestHandler):
     png = queryget(query, 'png')
     x, y, z = (int(queryget(query, n) or -1) for n in 'xyz')
     # generate/produce tile on-the-fly if needed
-    if png=='USA':
+    if png=='USA' or png=='ZIPCA':
       maker = fromzip
     else:
       # unknown PNG type requested
@@ -92,7 +102,7 @@ class TileHandler(webapp.RequestHandler):
       return
     # temporarily inhibit maker functionality
     name = 'tile_%s_%s_%s_%s' % (png, z, x, y)
-    data = get_tile(name, x, y, z, maker)
+    data = get_tile(png, name, x, y, z, maker)
     self.response.headers['Content-Type'] = 'image/png'
     self.response.out.write(data)
 
