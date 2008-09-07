@@ -19,7 +19,7 @@ def persist_tile(name, data):
     logging.info('%r not stored yet, "%s"', name, e)
   else:
     logging.info('%r just made (%d)', name, len(data))
-  memcache.put(name, data)
+  memcache.set(name, data)
   return data
 
 tiler_by_theme_registry = dict()
@@ -35,7 +35,8 @@ class Tiler(object):
     self.theme = theme
     self.prefix = 'tile_' + theme + '_'
     pickled_dict_name = '%s_dict.pik' % theme
-    self.tile_to_zip = pickle.load(pickled_dict_name)
+    with open(pickled_dict_name, 'rb') as f:
+      self.tile_to_zip = pickle.load(f)
     self.zips = dict()
 
   def get_tile(self, x, y, z):
@@ -59,7 +60,7 @@ class Tiler(object):
     if len(tiles) == 1:
       data = tiles[0].data
       logging.info('%r in store (%d)', name, len(data))
-      memcache.put(name, data)
+      memcache.set(name, data)
       return data
     # then try to find a zipfile
     zipnum = self.tile_to_zip.get(z_x_y)
@@ -68,11 +69,11 @@ class Tiler(object):
       with open('tile_crosshairs.png') as f:
         data = f.read()
     else:
-      try: zipfile = self.zips[zipnum]
+      try: thezip = self.zips[zipnum]
       except KeyError:
         zipname = '%s_%s.zip' % (self.theme, zipnum)
-        zipfile = self.zips[zipnum] = zipfile.ZipFile(zipname, 'r')
-      data = zipfile.read(name)
+        thezip = self.zips[zipnum] = zipfile.ZipFile(zipname, 'r')
+      data = thezip.read(name)
     return persist_tile(name, data)
 
 
