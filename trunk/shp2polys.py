@@ -13,6 +13,9 @@ shp2polys.Converter provided by this module, and override:
      excluded_ids: set of ids to exclude (to use the provided 'valid' method)
 To perform the conversion, init x=ConverterSubclass(), and just call x.doit().
 
+Similarly, class .PolyReader is customized by overriding infile.
+
+
 Running this module as a script performs the following operation:
   - reads a Shapefile named fe_2007_us_state/fe_2007_us_state.shp
   - writes a Polyfile named cont_us_state.ply
@@ -44,16 +47,36 @@ m = tile.GlobalMercator()
 
 # ensure all arrays are little-endian
 if shpextract.big_endian:
+  # we're on a bid-endian machine, make "normalizing" swap bytes of numbers
   def normalize_arrays(*arrays):
     for a in arrays: a.byteswap()
 else:
-  def normalize_arrays(*arrays): pass
+  # we're on a little-endian machine, make "normalizing" a no-op
+  def normalize_arrays(*arrays):
+    pass
+
 
 def merge_bbox(bb, obb, mima=(min,min,max,max)):
+  """ Enlarge a bounding box to encompass another one as well.
+
+  Args:
+    bb: a bounding-box, a list of 4 floats minx, miny, maxx, maxy
+    obb: another bounding box, same format
+  Side Effects:
+    widebs bb as needed to encompass all points in obb as well
+  """
   logging.debug(' MrgBB %s', ' '.join('%.2f'%x for x in obb))
   for i in range(4): bb[i] = mima[i](bb[i], obb[i])
 
+
 def encode_bbox(bbox):
+  """ Returns the str encoding a lat-lon bounding box (output in meters).
+
+  Args:
+    bbox: a bounding-box, seq of 4 floats minlon, minlat, maxlon, maxlat
+  Returns:
+    str code for 4 little-endian ints, the bbox in meters
+  """
   ll2m = m.LatLonToMeters
   bbout = array.array('l')
   for i in (0, 2):
@@ -61,14 +84,12 @@ def encode_bbox(bbox):
     bbout.append(int(x))
     bbout.append(int(y))
   normalize_arrays(bbout)
-  out = cStringIO.StringIO()
-  out.write(bbout.tostring())
-  try: return out.getvalue()
-  finally: out.close()
+  return bbout.tostring()
+
 
 class Converter(object):
   """ Performs Shapefile -> Polyfile conversion. """
-  # overridable data and methods
+  # class-overridable data and methods
   infile = 'fe_2007_us_state/fe_2007_us_state.shp'
   oufile = 'cont_us_state.ply'
   nameid = 'STUSPS'
@@ -77,20 +98,24 @@ class Converter(object):
   def valid(cls, id): return id not in cls.excluded_ids
 
   def __init__(self):
+    """ Open input shapefile and output polyfile. """
     self.shp = shpextract.Shp(self.infile, None, self.nameid, self.valid)
     self.zip = zipfile.ZipFile(self.oufile, 'w', zipfile.ZIP_DEFLATED)
     self.idnum_by_idvalue = dict()
     self._closed = False
 
   def close(self):
+    """ Close the open files (noop if called more than once). """
     if self._closed: return
     self.shp.close()
     self.zip.close()
     self._closed = True
 
   def doit(self):
+    """ Perform all of the conversion and close all open files. """
     ll2m = m.LatLonToMeters
     def recno_id_bbox_data(s=self.shp):
+      """ Generator returning (index, ID, bbox, data) for Shapefile records """
       i = 0
       while True:
         rec = s.get_next_record(bbox=1)
@@ -99,16 +124,22 @@ class Converter(object):
         i += 1
 
     class Extreme(object):
+      """ Utility subclass: instances represent + or - infinity """
       def __init__(self, allcmp): self.allcmp = allcmp
       def __cmp__(self, other): return self.allcmp
+    # use + and - infinity to initialize the overall bounding box
     High = Extreme(1); Low = Extreme(-1)
     overall_bbox = [High, High, Low, Low]
 
+    # loop over all records in the Shapefile, making their polygons
     for recno, id, bbox, indata in recno_id_bbox_data():
+      # translate ID values into increasing integers
       if id not in self.idnum_by_idvalue:
         self.idnum_by_idvalue[id] = len(self.idnum_by_idvalue)
       idnum = self.idnum_by_idvalue[id]
+      # ensure overall_bbox also encloses the current record's bbox
       merge_bbox(overall_bbox, bbox)
+      # translate 'indata' to arrays _starts and _lengths, and total_length
       numparts = len(indata)
       parts_starts = array.array('L', [0])
       parts_lengths = array.array('L')
@@ -117,6 +148,7 @@ class Converter(object):
         parts_starts.append(parts_starts[-1] + len(p))
       total_length = parts_starts.pop()
       normalize_arrays(parts_starts, parts_lengths)
+      # start polygon file-like object with "header" information
       out = cStringIO.StringIO()
       out.write(struct.pack('<LLL', idnum, numparts, total_length))
       out.write(encode_bbox(bbox))
@@ -125,6 +157,7 @@ class Converter(object):
 
       logging.debug('%s (%d): %d@%d', id, idnum, numparts, total_length)
 
+      # make polygon for each part in the data, write them all into 'out'
       for p in indata:
         lons = iter(p)
         oudata = array.array('l', [0]*len(p))
@@ -143,9 +176,11 @@ class Converter(object):
           i += 2
         normalize_arrays(oudata)
         out.write(oudata.tostring())
+      # save out's contents to the zipfile and close it
       self.zip.writestr('%s_%d.pol' % (id, recno), out.getvalue())
       out.close()
 
+    # record in the polyfile the ID values to ID numbers correspondence
     out = cStringIO.StringIO()
     for id in sorted(self.idnum_by_idvalue):
       idnum = self.idnum_by_idvalue[id]
@@ -153,6 +188,7 @@ class Converter(object):
     self.zip.writestr('ids.txt', out.getvalue())
     out.close()
 
+    # record in the polyfile the overall bounding box
     logging.debug(' OvaBB %s', ' '.join('%.2f'%x for x in overall_bbox))
     self.zip.writestr('bbox.bin', encode_bbox(overall_bbox))
 
@@ -160,15 +196,19 @@ class Converter(object):
 
 
 def setlogging(level=logging.DEBUG):
-    logging.basicConfig(format='%(levelname)s: %(message)s')
-    logger = logging.getLogger()
-    logger.setLevel(level)
+  """ Set logging config and level (to INFO, default, or DEBUG). """
+  logging.basicConfig(format='%(levelname)s: %(message)s')
+  logger = logging.getLogger()
+  logger.setLevel(level)
 
 
 class PolyReader(object):
+  """ Read a Polyfile conveniently (by iteration). """
+  # class-overridable data and methods
   infile = 'cont_us_state.ply'
 
   def __init__(self, zoom=4):
+    """ Open the Polyfile, read and prepare preliminary data """
     self.zip = zipfile.ZipFile(self.infile, 'r')
     self._closed = False
     self.zoom = zoom
@@ -180,7 +220,9 @@ class PolyReader(object):
     self.filenames = [s for s in self.zip.namelist() if s.endswith('.pol')]
 
   def __iter__(self):
+    """ Offer by-record iteration on the Polyfile (via a generator) """
     def prg():
+      """ Iterate on self, yielding tuples w/name and lists of numbers. """
       for name in self.filenames:
         filedata = self.zip.read(name)
         idnum, numparts, totleng = struct.unpack('<III', filedata[:12])
@@ -197,14 +239,17 @@ class PolyReader(object):
     return prg()
 
   def close(self):
+    """ Close the open file (noop if called more than once). """
     if self._closed: return
     self.zip.close()
     self._closed = True
 
   def setzoom(self, zoom):
+    """ Change the zoom level of this reader (only used to get tile ranges) """
     self.zoom = zoom
 
   def get_tiles_ranges(self):
+    """ Get tile ranges needed to paint this Polyfile at given zoom level """
     bb = array.array('l')
     filedata = self.zip.read('bbox.bin')
     bb.fromstring(filedata)
@@ -221,6 +266,7 @@ class PolyReader(object):
 if __name__ == '__main__':
 
   def main():
+    """ Example running of Converter and reader on US state boundaries """
     setlogging()
     c = Converter()
     c.doit()

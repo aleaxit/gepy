@@ -25,12 +25,21 @@ import zipfile
 MAX_SIZE = 1000*1000 - 50*1000
 
 def setlogging(dodebug=False):
+  """ Set logging config and level (to INFO, default, or DEBUG). """
   logging.basicConfig(format='%(levelname)s: %(message)s')
   logger = logging.getLogger()
   logger.setLevel(logging.DEBUG if dodebug else logging.INFO)
   return logger
 
+
 def namekey(filename):
+  """ Return key (theme, z, x, y) for a filename 'tile_theme_z_x_y.png'.
+
+  Args:
+    filename: str like 'tile_FOOBAR_1_2_3.png'
+  Returns:
+    4-item tuple: str like FOOBAR, then ints like 1, 2, 3
+  """
   try: tile, theme, z, x, y = filename[:-4].split('_')
   except ValueError, e:
     print "Can't unpack %r: %s" % (filename, e)
@@ -38,12 +47,19 @@ def namekey(filename):
   assert tile=='tile'
   return theme, int(z), int(x), int(y)
 
+
 def main(working_directory='/tmp'):
+  """ Prepare zipfiles and .pik dictionary index from .png tile files. """
   setlogging(dodebug=True)
 
+  # get all filenames, properly sorted, and the theme
   os.chdir(working_directory)
   filenames = sorted(glob.iglob('tile_*.png'), key=namekey)
-  theme, z, x, y = namekey(filenames[0])
+  theme = namekey(filenames[0])[0]
+  # check that all filenames are for the same theme
+  lastheme = namekey(filenames[-1])[0]
+  assert theme == lastheme
+  # precompute and initialize as needed
   zxy_start = len('tile_%s_' % theme)
   dbname = '%s_dict.pik' % theme
   logging.info('Processing %d files, creating index %r', len(filenames), dbname)
@@ -51,22 +67,27 @@ def main(working_directory='/tmp'):
   fns = iter(filenames)
   fn = fns.next()
   index_dict = dict()
+  # main loop: open, fill and close one more zipfile
   while True:
+    # loop invariants: all zipfiles from 1 to zipnum are done and closed;
+    # fn names a PNG file that must be the first in this next zipfile
     zipnum += 1
     zipfna = '%s_%s.zip' % (theme, zipnum)
     logging.debug('Creating zipfile %r', zipfna)
     num_tiles_in_zip = 0
     zipfil = zipfile.ZipFile(zipfna, 'w', zipfile.ZIP_DEFLATED)
     zipsiz = 0
+    # inner loop: add fn to current zipfile, get next fn, break if too big
     while True:
       zipfil.write(fn)
       num_tiles_in_zip += 1
       z_x_y = fn[zxy_start:-4]
-      index_dict[z_x_y] = zipfna
+      index_dict[z_x_y] = zipnum
       zipinfo = zipfil.getinfo(fn)
       zipsiz += zipinfo.compress_size
       try: fn = fns.next()
       except StopIteration:
+        # done all tile files, set fn to None to mark end of main loop
         fn = None
         break
       filsiz = os.stat(fn).st_size

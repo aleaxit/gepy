@@ -12,6 +12,17 @@ from google.appengine.api import memcache
 import models
 
 def persist_tile(name, data):
+  """ Put Tile with given name and data to storage and cache.
+
+  Args:
+    name: str name of the tile
+    data: PNG binary blob of data for the tile
+  Returns:
+    data
+  Side effects:
+    saves the tile to Storage (if there isn't too much contention there);
+    also sets the name/data correspondence in the cache.
+  """
   tile = models.Tile(name=name, data=data)
   try:
     tile.put()
@@ -22,8 +33,12 @@ def persist_tile(name, data):
   memcache.set(name, data)
   return data
 
+
+# a registry that keeps a Tiler instance per theme of interest
 tiler_by_theme_registry = dict()
+
 def tiler_by_theme(theme):
+  """ Returns Tiler instance for the given theme. """
   try: return tiler_by_theme_registry[theme]
   except KeyError:
     tiler = tiler_by_theme_registry[theme] = Tiler(theme)
@@ -31,7 +46,13 @@ def tiler_by_theme(theme):
 
 class Tiler(object):
   """ Provide all the tile-management needed for one theme. """
+
   def __init__(self, theme):
+    """ Record the theme and read the tile-to-zipnumber mapping.
+
+    Args:
+      theme: the str name of the theme (<theme>_dict.pik must exist!)
+    """
     self.theme = theme
     self.prefix = 'tile_' + theme + '_'
     pickled_dict_name = '%s_dict.pik' % theme
@@ -47,6 +68,7 @@ class Tiler(object):
     Returns:
       PNG data for the tile (or a place-holder tile, if no tile is found)
     """
+    # form the z_x_y key, and the corresponding PNG filename
     z_x_y = '%s_%s_%s' % (z, x, y)
     name = self.prefix + z_x_y + '.png'
     # first try the cache
@@ -103,22 +125,6 @@ class TileHandler(webapp.RequestHandler):
     self.response.headers['Content-Type'] = 'image/png'
     self.response.out.write(data)
 
-  def post(self):
-    """ Get a tile's name and data from the client, put in the datastore """
-    query = cgi.parse_qs(self.request.query_string)
-    name = queryget(query, 'name')
-    if name is None:
-      self.response.set_status(400, "Must pass ?name= in query!")
-      return
-    # sanity check: tile wasn't already there
-    data = get_tile(name, None, None, None)
-    if data is not None:
-      self.response.set_status(401, "Tile exists for name=%r" % name)
-      return
-    data = self.request.body
-    tile = models.Tile(name=name, data=data)
-    tile.put()
-    self.response.out.write("%r created successfully." % name)
 
 def main():
   application = webapp.WSGIApplication([('/tile', TileHandler)],
