@@ -33,8 +33,8 @@ def main():
   m = tile.GlobalMercator()
 
   for zoom in range(MIN_ZOOM, MAX_ZOOM+1):
-    r = shp2polys.PolyReader(zoom)
-    bb = r.get_tiles_ranges()
+    r = shp2polys.PolyReader()
+    bb = r.get_tiles_ranges(zoom)
     size = 256*(bb[2]-bb[0]+1), 256*(bb[3]-bb[1]+1)
     logging.info('zoom %s: tiles %s, size %s', r.zoom, bb, size)
     palette = [255]*3 + [255, 0, 0] + [0, 255, 0]

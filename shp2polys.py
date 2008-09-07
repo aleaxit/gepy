@@ -15,6 +15,9 @@ To perform the conversion, init x=ConverterSubclass(), and just call x.doit().
 
 Similarly, class .PolyReader is customized by overriding infile.
 
+All of these customizations can also be done per-instance by providing named
+args to the ctors of Converter and PolyReader (valid must be a 1-arg callable).
+
 
 Running this module as a script performs the following operation:
   - reads a Shapefile named fe_2007_us_state/fe_2007_us_state.shp
@@ -94,11 +97,11 @@ class Converter(object):
   oufile = 'cont_us_state.ply'
   nameid = 'STUSPS'
   excluded_ids = set('HI AK VI GU PR AS MP'.split())
-  @classmethod
-  def valid(cls, id): return id not in cls.excluded_ids
+  def valid(self, id): return id not in self.excluded_ids
 
-  def __init__(self):
+  def __init__(self, **kwds):
     """ Open input shapefile and output polyfile. """
+    self.__dict__.update(kwds)
     self.shp = shpextract.Shp(self.infile, None, self.nameid, self.valid)
     self.zip = zipfile.ZipFile(self.oufile, 'w', zipfile.ZIP_DEFLATED)
     self.idnum_by_idvalue = dict()
@@ -207,11 +210,11 @@ class PolyReader(object):
   # class-overridable data and methods
   infile = 'cont_us_state.ply'
 
-  def __init__(self, zoom=4):
+  def __init__(self, **kwds):
+    self.__dict__.update(kwds)
     """ Open the Polyfile, read and prepare preliminary data """
     self.zip = zipfile.ZipFile(self.infile, 'r')
     self._closed = False
-    self.zoom = zoom
     names_and_nums = self.zip.read('ids.txt').splitlines()
     self.name_by_num = dict()
     for line in names_and_nums:
@@ -244,22 +247,18 @@ class PolyReader(object):
     self.zip.close()
     self._closed = True
 
-  def setzoom(self, zoom):
-    """ Change the zoom level of this reader (only used to get tile ranges) """
-    self.zoom = zoom
-
-  def get_tiles_ranges(self):
+  def get_tiles_ranges(self, zoom):
     """ Get tile ranges needed to paint this Polyfile at given zoom level """
     bb = array.array('l')
     filedata = self.zip.read('bbox.bin')
     bb.fromstring(filedata)
     logging.debug('BB: %s', list(bb))
-    minpx, minpy = m.MetersToPixels(bb[0], bb[1], self.zoom) 
-    maxpx, maxpy = m.MetersToPixels(bb[2], bb[3], self.zoom) 
+    minpx, minpy = m.MetersToPixels(bb[0], bb[1], zoom) 
+    maxpx, maxpy = m.MetersToPixels(bb[2], bb[3], zoom) 
     logging.debug('PX: %s, %s, %s, %s', minpx, minpy, maxpx, maxpy)
 
-    mintx, minty = m.MetersToTile(bb[0], bb[1], self.zoom) 
-    maxtx, maxty = m.MetersToTile(bb[2], bb[3], self.zoom) 
+    mintx, minty = m.MetersToTile(bb[0], bb[1], zoom) 
+    maxtx, maxty = m.MetersToTile(bb[2], bb[3], zoom) 
     return mintx, minty, maxtx, maxty
  
 
