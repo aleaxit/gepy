@@ -1,4 +1,8 @@
 """ Prepare tiles for CA zipcode boundaries as PNG files in /tmp/.
+
+Overall input is Shapefile ca/zt06_d00.shp .
+This script makes an intermediate Polyfile cazip.ply in the current directory,
+then uses this Polyfile to paint PNG tiles in /tmp/ for all relevant tiles.
 """
 from __future__ import with_statement
 
@@ -13,21 +17,34 @@ import shp2polys
 import tile
 
 class Converter(shp2polys.Converter):
+  """ A Shapefile-to-Polyfile converter for the CA zipfile boundaries. """
   infile = 'ca/zt06_d00.shp'
   oufile = 'cazip.ply'
   nameid = 'ZCTA'
   @classmethod
   def valid(cls, id): return id.isdigit()
 
+
 class PolyReader(shp2polys.PolyReader):
+  """ A Polyfile reader for the CA zipfile boundaries. """
   infile = Converter.oufile
 
+
 def s(aray):
+  """ Return a reasonable string to display several floats.
+
+  Args:
+    aray: a sequence of floats
+  Returns:
+    a str with comma-separated 2-digits reprs of floats within brackets
+  """
   res = []
   for x in aray: res.append('%.2f' % x)
   return '[%s]' % ','.join(res)
 
+
 def main():
+  """ Perform the script's tasks. """
   shp2polys.setlogging()
 
   name_format = 'tile_ZIPCA_%s_%s_%s'
@@ -55,8 +72,8 @@ def main():
     green = 2
     im.putpalette(palette)
 
+    # draw all polygons -> prepare 1 large image with all tiles side by side
     matrix = m.getMetersToPixelsXform(zoom, bb)
-    # font = ImageFont.truetype('/Library/Fonts/ChalkboardBold.ttf', 24)
     draw = ImageDraw.Draw(im)
     for name, bbox, starts, lengths, meters in r:
       for s, l in zip(starts, lengths):
@@ -65,7 +82,7 @@ def main():
         draw.polygon(p, outline=red)
     del draw 
 
-    # save all tiles
+    # save all tiles (obtained by chopping the 1 large image in 256x256 squares)
     for tx in range(bb[0], bb[2]+1):
       left = (tx-bb[0]) * 256
       right = left+255
@@ -73,6 +90,7 @@ def main():
         top = (bb[3]-ty) * 256
         bottom = top+255
         tileim = im.crop((left, top, right, bottom))
+        # explicitly skip tiles with no pixels drawn on them
         if tileim.getbbox() is None:
           logging.debug('Skip empty tile %s/%s', tx, ty)
           continue
@@ -82,10 +100,9 @@ def main():
         tileim.save(out, format='PNG', transparency=white)
         data = out.getvalue()
         out.close()
-        # c.execute('INSERT INTO tiles VALUES (:1, :2, :3)', (name, data, ''))
-        # conn.commit()
         with open('/tmp/%s.png'%name, 'wb') as f:
           f.write(data)
 
-main()
+if __name__ == '__main__':
+  main()
 

@@ -116,7 +116,8 @@ class GlobalMercator(object):
       tilesbb: tiles for transform, minx, miny, maxx, maxy
     Returns:
       a, b, c, d, e, f  when in_x, in_y are meters, out_x, out_y are pixels
-      i.e.: 1/res, 0, originShift/res twice (res depends on zoom!)
+      i.e.: 1/res, 0, originShift/res, 0, -ires, [...]
+      res depends on zoom level; out_y grows down while in_y grows up.
     """
     ires = 1.0 / self.Resolution(zoom)
     delta = self.originShift * ires

@@ -12,7 +12,8 @@ class Reverse(webapp.RequestHandler):
   def get(self):
     lat = self.request.get("lat")
     lng = self.request.get("lng")
-    url = "http://ws.geonames.org/findNearbyPostalCodesJSON?lat=%s&lng=%s" % (lat, lng)
+    url = "http://ws.geonames.org/findNearbyPostalCodesJSON?lat=%s&lng=%s" % (
+           lat, lng)
     result = urlfetch.fetch(url)
     logging.log(logging.INFO, result)
     if result.status_code == 200:
