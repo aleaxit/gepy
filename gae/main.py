@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 from __future__ import with_statement
-
 import cgi
 import logging
+import sqlite3
 import wsgiref.handlers
 import zipfile
 from google.appengine.ext import db
@@ -10,21 +10,6 @@ from google.appengine.ext import webapp
 from google.appengine.api import memcache
 
 import models
-
-zipnames = dict(USA='tiles', ZIPCA='tiles_zipca')
-thezips = dict()
-def fromzip(png, name, x, y, z, unused_lastarg):
-  thezip = thezips.get(png)
-  zn = zipnames.get(png)
-  if thezip is None:
-    if zn is None: return None
-    thezip = thezips[png] = zipfile.ZipFile('%s.zip'%zn, 'r')
-  name += '.png'
-  logging.info('From zip: %s in %s', name, zn)
-  try:
-    return thezip.read(name)
-  except KeyError:
-    return None
 
 def persist_tile(name, data):
   tile = models.Tile(name=name, data=data)
@@ -34,44 +19,64 @@ def persist_tile(name, data):
     logging.info('%r not stored yet, "%s"', name, e)
   else:
     logging.info('%r just made (%d)', name, len(data))
+  memcache.put(name, data)
+  return data
 
-def get_tile(png, name, x, y, z, maker=None):
-  """ Get from cache or store, or make and put in store and cache, a tile.
+tiler_by_theme_registry = dict()
+def tiler_by_theme(theme):
+  try: return tiler_by_theme_registry[theme]
+  except KeyError:
+    tiler = tiler_by_theme_registry[theme] = Tiler(theme)
+    return tiler
 
-  Args:
-    png: name of the PNG family (USA, ZIPCA, &c)
-    name: name of the tile (unique key)
-    x, y, z: Google Maps coordinates of the tile
-    maker: function that generates and returns the tile (or None)
-           when called with args: png, name, x, y, z, None
-  Returns:
-    PNG data for the tile (None if absent and maker was or returned None)
-  """
-  # first try the cache
-  data = memcache.get(name)
-  if data is not None:
-    logging.info('%r in cache (%d)', name, len(data))
-    return data
-  else:
+class Tiler(object):
+  """ Provide all the tile-management needed for one theme. """
+  def __init__(self, theme):
+    self.theme = theme
+    self.prefix = 'tile_' + theme + '_'
+    dbname = '%s_tiles.sdb' % theme
+    self.conn = sqlite3.connect(dbname)
+    self.zips = dict()
+
+  def get_tile(self, x, y, z):
+    """ Get from cache, store, or zipfile, the PNG data for a tile.
+
+    Args:
+      x, y, z: Google Maps coordinates of the tile
+    Returns:
+      PNG data for the tile (or a place-holder tile, if no tile is found)
+    """
+    z_x_y = '%s_%s_%s' % (z, x, y)
+    name = self.prefix + z_x_y + '.png'
+    # first try the cache
+    data = memcache.get(name)
+    if data is not None:
+      logging.info('%r in cache (%d)', name, len(data))
+      return data
     # then try the datastore
     query = models.Tile.gql("WHERE name = :1", name)
     tiles = query.fetch(1)
     if len(tiles) == 1:
       data = tiles[0].data
       logging.info('%r in store (%d)', name, len(data))
+      memcache.put(name, data)
+      return data
+    # then try to find a zipfile
+    c = self.conn.execute('SELECT n FROM tile_to_zip WHERE z_x_y=?', (z_x_y,))
+    zipnum = c.fetchone()
+    if zipnum is None:
+      # no such tile, make one up!
+      with open('tile_crosshairs.png') as f:
+        data = f.read()
     else:
-      # nope, generate the tile and put it in the datastore
-      if maker is None:
-        data = None
-      else:
-        data = maker(png, name, x, y, z, None)
-      if data is None:
-        logging.info('%r not there', name)
-        with open('tile_crosshairs.png') as f:
-          data = f.read()
-      persist_tile(name, data)
-    memcache.add(name, data)
-    return data
+      zipnum, = zipnum
+      try: zipfile = self.zips[zipnum]
+      except KeyError:
+        zipname = '%s_%s.zip' % (self.theme, zipnum)
+        zipfile = self.zips[zipnum] = zipfile.ZipFile(zipname, 'r')
+      data = zipfile.read(name)
+    return persist_tile(name, data)
+
 
 def queryget(query, name):
   """ Utility function to get a variable's single value from a CGI query dict
@@ -85,24 +90,17 @@ def queryget(query, name):
   x = query.get(name)
   return x[0] if x else None
 
+
 class TileHandler(webapp.RequestHandler):
-  "Serve PNG data (generated on the fly, or cached) for Google Maps tiles."
+  "Serve PNG data (cached, stored or from a zipfile) for Google Maps tiles."
 
   def get(self):
     """ Serve the requested tile (generate if it needed) """
     query = cgi.parse_qs(self.request.query_string)
-    png = queryget(query, 'png')
+    theme = queryget(query, 'png')
     x, y, z = (int(queryget(query, n) or -1) for n in 'xyz')
     # generate/produce tile on-the-fly if needed
-    if png=='USA' or png=='ZIPCA':
-      maker = fromzip
-    else:
-      # unknown PNG type requested
-      self.response.set_status(404, "PNG type %r not found" % png)
-      return
-    # temporarily inhibit maker functionality
-    name = 'tile_%s_%s_%s_%s' % (png, z, x, y)
-    data = get_tile(png, name, x, y, z, maker)
+    data = tiler_by_theme(theme).get_tile(x, y, z)
     self.response.headers['Content-Type'] = 'image/png'
     self.response.out.write(data)
 
