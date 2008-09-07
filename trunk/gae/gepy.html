@@ -14,7 +14,7 @@
   function load() {
     if (GBrowserIsCompatible()) {
       var map = new GMap2(document.getElementById("map_canvas"));
-      map.setCenter(new GLatLng(37.76675,-98.93164), 3);
+      map.setCenter(new GLatLng(37.76675,-98.93164), 4);
       map.addControl(new GLargeMapControl());
 
       var myCopyright = new GCopyrightCollection("© ");
@@ -38,7 +38,7 @@
  </head>
  <body onload="load()" onunload="GUnload()">
    <h1>States of the USA</h1>
-   <div id="map_canvas" style="width: 500px; height: 400px"></div>
+   <div id="map_canvas" style="width: 800px; height: 600px"></div>
  </body>
 </html>
 
