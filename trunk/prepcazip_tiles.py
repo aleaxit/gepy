@@ -16,6 +16,8 @@ from PIL import Image, ImageDraw, ImageFont, ImagePath
 import shp2polys
 import tile
 
+POLYFILE = 'cazip.ply'
+
 class Converter(shp2polys.Converter):
   """ A Shapefile-to-Polyfile converter for the CA zipfile boundaries. """
   infile = 'ca/zt06_d00.shp'
@@ -52,14 +54,15 @@ def main():
   MAX_ZOOM = 12
   m = tile.GlobalMercator()
 
-  if not os.path.isfile(Converter.oufile):
-    logging.info('Building %r', Converter.oufile)
-    c = Converter()
+  if not os.path.isfile(POLYFILE):
+    logging.info('Building %r', POLYFILE)
+    c = Converter(infile='ca/zt06_d00.shp', oufile=POLYFILE, nameid='ZTCA',
+                  valid=str.isdigit)
     c.doit()
 
+  r = PolyReader(infile=POLYFILE)
   for zoom in range(MIN_ZOOM, MAX_ZOOM+1):
-    r = PolyReader(zoom)
-    bb = r.get_tiles_ranges()
+    bb = r.get_tiles_ranges(zoom)
     size = 256*(bb[2]-bb[0]+1), 256*(bb[3]-bb[1]+1)
     logging.info('zoom %s: tiles %s, size %s', r.zoom, bb, size)
     white = 0
