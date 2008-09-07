@@ -2,7 +2,7 @@
 from __future__ import with_statement
 import cgi
 import logging
-import sqlite3
+import pickle
 import wsgiref.handlers
 import zipfile
 from google.appengine.ext import db
@@ -34,8 +34,8 @@ class Tiler(object):
   def __init__(self, theme):
     self.theme = theme
     self.prefix = 'tile_' + theme + '_'
-    dbname = '%s_tiles.sdb' % theme
-    self.conn = sqlite3.connect(dbname)
+    pickled_dict_name = '%s_dict.pik' % theme
+    self.tile_to_zip = pickle.load(pickled_dict_name)
     self.zips = dict()
 
   def get_tile(self, x, y, z):
@@ -62,14 +62,12 @@ class Tiler(object):
       memcache.put(name, data)
       return data
     # then try to find a zipfile
-    c = self.conn.execute('SELECT n FROM tile_to_zip WHERE z_x_y=?', (z_x_y,))
-    zipnum = c.fetchone()
+    zipnum = self.tile_to_zip.get(z_x_y)
     if zipnum is None:
       # no such tile, make one up!
       with open('tile_crosshairs.png') as f:
         data = f.read()
     else:
-      zipnum, = zipnum
       try: zipfile = self.zips[zipnum]
       except KeyError:
         zipname = '%s_%s.zip' % (self.theme, zipnum)
