@@ -28,9 +28,20 @@ from PIL import Image, ImageDraw, ImageFont, ImagePath
 import shp2polys
 import tile
 
+class ThemeData(dict):
+  __getattr__ = __getitem__
+
 themes = dict(
-  USA='',
-  ZIPCA='',
+  USA=ThemeData(infile='fe_2007_us_state/fe_2007_us_state.shp',
+                oufile='cont_us_state.ply',
+                nameid='STUSPS',
+                excluded_ids=set('HI AK VI GU PR AS MP'.split()),
+                ),
+  ZIPCA=ThemeData(infile='ca/zt06_d00.shp',
+                  oufile='cazip.ply',
+                  nameid='ZTCA',
+                  valid=str.isdigit,
+                  ),
   )
 
 def s(aray):
@@ -65,6 +76,19 @@ def study_args():
   if theme not in themes:
     logging.error('Unknown theme %r', theme)
     usage()
+  try:
+    f = open('gae/%s_dict.pik' % theme)
+  except IOError:
+    f = None
+  if f is None:
+    index_dict = None
+  else:
+    try:
+      index_dict = cPickle.load(f)
+      f.close()
+    except Exception, e:
+      logging.error('Invalid PIK index for %r: %s', theme, e)
+      index_dict = None
   if nargs > 2:
     try:
       minzoom = int(sys.argv[2])
@@ -80,38 +104,34 @@ def study_args():
       logging.error('Invalid min/max zoom: not 0<%s<=%s<18', minzoom, maxzoom)
       usage()
     logging.info('Theme=%s, zooms=%s to %s', theme, minzoom, maxzoom)
-    return theme, minzoom, maxzoom
-  try:
-    f = open('gae/%s_dict.pik' % theme)
-    index_dict = cPickle.load(f)
-    f.close()
-  except Exception, e:
-    logging.error('Invalid PIK index for %r: %s', theme, e)
+    return theme, minzoom, maxzoom, index_dict or dict()
+  if index_dict is None:
+    logging.error('Must give zoom for theme %r (no PIK)', theme)
     usage()
   existing_zoom = max(int(zxy.split('_')[0]) for zxy in index_dict)
   logging.info('Theme=%s, next zoom: %s', theme, existing_zoom+1)
-  return theme, existing_zoom+1, existing_zoom+1
+  return theme, existing_zoom+1, existing_zoom+1, index_dict
 
 def main():
   """ Perform the script's tasks. """
   shp2polys.setlogging()
   theme, minzoom, maxzoom = study_args()
-  # TODO: actually *do* the work;-)
-  sys.exit(0)
-
-  name_format = 'tile_ZIPCA_%s_%s_%s'
-  MIN_ZOOM = 6
-  MAX_ZOOM = 12
+  name_format = '/tmp/tile_%s_%%s_%%s_%%s.png' % theme
   m = tile.GlobalMercator()
+  meta = themes[theme]
 
-  if not os.path.isfile(POLYFILE):
-    logging.info('Building %r', POLYFILE)
-    c = Converter(infile='ca/zt06_d00.shp', oufile=POLYFILE, nameid='ZTCA',
-                  valid=str.isdigit)
+  # ensure the Polyfile we need is around
+  if not os.path.isfile(meta.oufile):
+    logging.info('Building polyfile %r', meta.oufile)
+    c = shp2polys.Converter(**meta)
     c.doit()
 
-  r = PolyReader(infile=POLYFILE)
-  for zoom in range(MIN_ZOOM, MAX_ZOOM+1):
+  # make a Reader for the polyfile, and do all required tiles
+  r = PolyReader(infile=meta.oufile)
+  for zoom in range(minzoom, maxzoom+1):
+    do_all_tiles(m, r, zoom, name_format)
+
+def do_all_tiles(m, r, zoom, name_format):
     bb = r.get_tiles_ranges(zoom)
     size = 256*(bb[2]-bb[0]+1), 256*(bb[3]-bb[1]+1)
     logging.info('zoom %s: tiles %s, size %s', r.zoom, bb, size)
