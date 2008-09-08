@@ -27,9 +27,10 @@ from PIL import Image, ImageDraw, ImageFont, ImagePath
 
 import shp2polys
 import tile
+PIK_FORMAT = 'gae/%s_dict.pik'
 
 class ThemeData(dict):
-  __getattr__ = __getitem__
+  __getattr__ = dict.__getitem__
 
 themes = dict(
   USA=ThemeData(infile='fe_2007_us_state/fe_2007_us_state.shp',
@@ -77,7 +78,7 @@ def study_args():
     logging.error('Unknown theme %r', theme)
     usage()
   try:
-    f = open('gae/%s_dict.pik' % theme)
+    f = open(PIK_FORMAT % theme)
   except IOError:
     f = None
   if f is None:
@@ -115,7 +116,7 @@ def study_args():
 def main():
   """ Perform the script's tasks. """
   shp2polys.setlogging()
-  theme, minzoom, maxzoom = study_args()
+  theme, minzoom, maxzoom, index_dict = study_args()
   name_format = '/tmp/tile_%s_%%s_%%s_%%s.png' % theme
   m = tile.GlobalMercator()
   meta = themes[theme]
@@ -127,54 +128,80 @@ def main():
     c.doit()
 
   # make a Reader for the polyfile, and do all required tiles
-  r = PolyReader(infile=meta.oufile)
+  r = shp2polys.PolyReader(infile=meta.oufile)
   for zoom in range(minzoom, maxzoom+1):
     do_all_tiles(m, r, zoom, name_format)
 
+
 def do_all_tiles(m, r, zoom, name_format):
     bb = r.get_tiles_ranges(zoom)
-    size = 256*(bb[2]-bb[0]+1), 256*(bb[3]-bb[1]+1)
-    logging.info('zoom %s: tiles %s, size %s', r.zoom, bb, size)
-    white = 0
-    try: im = Image.new('P', size, white)
-    except MemoryError:
-      logging.error('sorry, zoom %r takes too much memory, stopping', zoom)
-      break
-    palette = [255]*3 + [255, 0, 0] + [0, 255, 0]
-    red = 1
-    green = 2
-    im.putpalette(palette)
+    do_tiles(m, r, zoom, name_format, bb)
 
-    # draw all polygons -> prepare 1 large image with all tiles side by side
-    matrix = m.getMetersToPixelsXform(zoom, bb)
-    draw = ImageDraw.Draw(im)
-    for name, bbox, starts, lengths, meters in r:
-      for s, l in zip(starts, lengths):
-        p = ImagePath.Path(meters[s:s+l])
-        p.transform(matrix)
-        draw.polygon(p, outline=red)
-    del draw 
 
-    # save all tiles (obtained by chopping the 1 large image in 256x256 squares)
-    for tx in range(bb[0], bb[2]+1):
-      left = (tx-bb[0]) * 256
-      right = left+255
-      for ty in range(bb[1], bb[3]+1):
-        top = (bb[3]-ty) * 256
-        bottom = top+255
-        tileim = im.crop((left, top, right, bottom))
-        # explicitly skip tiles with no pixels drawn on them
-        if tileim.getbbox() is None:
-          logging.debug('Skip empty tile %s/%s', tx, ty)
-          continue
-        gtx, gty = m.GoogleTile(tx, ty, zoom)
-        name = name_format % (zoom, gtx, gty)
-        out = cStringIO.StringIO()
-        tileim.save(out, format='PNG', transparency=white)
-        data = out.getvalue()
-        out.close()
-        with open('/tmp/%s.png'%name, 'wb') as f:
-          f.write(data)
+MAX_SIZE = 1000 * 1000 * 1000
+
+def _dodivide(bb, dd, minind):
+  midbb = bb[minind] + dd // 2
+  if midbb >= bb[minind+2]:
+    logging.error("Can't split %s, stopping", bb)
+    raise ValueError
+  bbs = list(bb), list(bb)
+  bbs[0][minind+2] = midbb
+  bbs[1][minind] = midbb+1
+  return bbs
+
+def do_tiles(m, r, zoom, name_format, bb):
+  dx = bb[2] - bb[0]
+  dy = bb[3] - bb[1]
+  size = 256*(dx+1), 256*(dy+1)
+  logging.info('zoom %s: tiles %s, size %s', zoom, bb, size)
+  if size[0]*size[1] > MAX_SIZE:
+    logging.info('splitting along %s', 'XY'[dx<dy])
+    bbs = _dodivide(bb, max(dx, dy), int(dx<dy))
+    for abb in bbs: do_tiles(m, r, zoom, name_format, abb)
+    return
+  logging.info('Computing %d tiles', (dx+1)*(dy+1))
+
+  # TODO: fix up all offsets &c below
+  return
+
+  white = 0
+  im = Image.new('P', size, white)
+  palette = [255]*3 + [255, 0, 0] + [0, 255, 0]
+  red = 1
+  green = 2
+  im.putpalette(palette)
+
+  # draw all polygons -> prepare 1 large image with all tiles side by side
+  matrix = m.getMetersToPixelsXform(zoom, bb)
+  draw = ImageDraw.Draw(im)
+  for name, bbox, starts, lengths, meters in r:
+    for s, l in zip(starts, lengths):
+      p = ImagePath.Path(meters[s:s+l])
+      p.transform(matrix)
+      draw.polygon(p, outline=red)
+  del draw 
+
+  # save all tiles (obtained by chopping the 1 large image in 256x256 squares)
+  for tx in range(bb[0], bb[2]+1):
+    left = (tx-bb[0]) * 256
+    right = left+255
+    for ty in range(bb[1], bb[3]+1):
+      top = (bb[3]-ty) * 256
+      bottom = top+255
+      tileim = im.crop((left, top, right, bottom))
+      # explicitly skip tiles with no pixels drawn on them
+      if tileim.getbbox() is None:
+        logging.debug('Skip empty tile %s/%s', tx, ty)
+        continue
+      gtx, gty = m.GoogleTile(tx, ty, zoom)
+      name = name_format % (zoom, gtx, gty)
+      out = cStringIO.StringIO()
+      tileim.save(out, format='PNG', transparency=white)
+      data = out.getvalue()
+      out.close()
+      with open('/tmp/%s.png'%name, 'wb') as f:
+        f.write(data)
 
 if __name__ == '__main__':
   main()
