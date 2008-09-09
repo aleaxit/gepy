@@ -162,9 +162,6 @@ def do_tiles(m, r, zoom, name_format, bb):
     return
   logging.info('Computing %d tiles', (dx+1)*(dy+1))
 
-  # TODO: fix up all offsets &c below
-  return
-
   white = 0
   im = Image.new('P', size, white)
   palette = [255]*3 + [255, 0, 0] + [0, 255, 0]
