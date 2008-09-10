@@ -78,15 +78,15 @@ def study_args():
     logging.error('Unknown theme %r', theme)
     usage()
   try:
-    f = open(PIK_FORMAT % theme)
+    pik_filename = open(PIK_FORMAT % theme)
   except IOError:
-    f = None
-  if f is None:
+    pik_filename = None
+  if pik_filename is None:
     index_dict = None
   else:
     try:
-      index_dict = cPickle.load(f)
-      f.close()
+      index_dict = cPickle.load(pik_filename)
+      pik_filename.close()
     except Exception, e:
       logging.error('Invalid PIK index for %r: %s', theme, e)
       index_dict = None
@@ -105,18 +105,38 @@ def study_args():
       logging.error('Invalid min/max zoom: not 0<%s<=%s<18', minzoom, maxzoom)
       usage()
     logging.info('Theme=%s, zooms=%s to %s', theme, minzoom, maxzoom)
-    return theme, minzoom, maxzoom, index_dict or dict()
-  if index_dict is None:
+    if index_dict is None: index_dict = dict()
+  elif index_dict is None:
     logging.error('Must give zoom for theme %r (no PIK)', theme)
     usage()
-  existing_zoom = max(int(zxy.split('_')[0]) for zxy in index_dict)
-  logging.info('Theme=%s, next zoom: %s', theme, existing_zoom+1)
-  return theme, existing_zoom+1, existing_zoom+1, index_dict
+  else:
+    existing_zoom = max(int(zxy.split('_')[0]) for zxy in index_dict)
+    logging.info('Theme=%s, next zoom: %s', theme, existing_zoom+1)
+    minzoom = maxzoom = existing_zoom + 1
+  persister = TilePersister(index_dict, pik_filename)
+  return theme, minzoom, maxzoom, persister
+
+
+class TilePersister(object):
+  """ Persist tiles to zips and update the index dict accordingly """
+  def __init__(self, index_dict, pik_filename):
+    self.index_dict = index_dict
+    self.pik_filename = pik_filename
+    # TODO: open a new zipfile, etc etc
+
+  def add_data(self, data, name):
+    """ TODO: add data with name, NOT like;-)...: """
+    with open('/tmp/%s.png'%name, 'wb') as f:
+      f.write(data)
+
+  def close(self):
+    """ TODO: close current zip, write index_dict out, &c """
+
 
 def main():
   """ Perform the script's tasks. """
   shp2polys.setlogging()
-  theme, minzoom, maxzoom, index_dict = study_args()
+  theme, minzoom, maxzoom, persister = study_args()
   name_format = '/tmp/tile_%s_%%s_%%s_%%s.png' % theme
   m = tile.GlobalMercator()
   meta = themes[theme]
@@ -130,12 +150,14 @@ def main():
   # make a Reader for the polyfile, and do all required tiles
   r = shp2polys.PolyReader(infile=meta.oufile)
   for zoom in range(minzoom, maxzoom+1):
-    do_all_tiles(m, r, zoom, name_format)
+    do_all_tiles(m, r, zoom, name_format, persister)
+
+  persister.close()
 
 
-def do_all_tiles(m, r, zoom, name_format):
+def do_all_tiles(m, r, zoom, name_format, persister):
     bb = r.get_tiles_ranges(zoom)
-    do_tiles(m, r, zoom, name_format, bb)
+    do_tiles(m, r, zoom, name_format, bb, persister)
 
 
 MAX_SIZE = 1000 * 1000 * 1000
@@ -150,7 +172,7 @@ def _dodivide(bb, dd, minind):
   bbs[1][minind] = midbb+1
   return bbs
 
-def do_tiles(m, r, zoom, name_format, bb):
+def do_tiles(m, r, zoom, name_format, bb, persister):
   dx = bb[2] - bb[0]
   dy = bb[3] - bb[1]
   size = 256*(dx+1), 256*(dy+1)
@@ -158,7 +180,7 @@ def do_tiles(m, r, zoom, name_format, bb):
   if size[0]*size[1] > MAX_SIZE:
     logging.info('splitting along %s', 'XY'[dx<dy])
     bbs = _dodivide(bb, max(dx, dy), int(dx<dy))
-    for abb in bbs: do_tiles(m, r, zoom, name_format, abb)
+    for abb in bbs: do_tiles(m, r, zoom, name_format, abb, persister)
     return
   logging.info('Computing %d tiles', (dx+1)*(dy+1))
 
@@ -197,8 +219,7 @@ def do_tiles(m, r, zoom, name_format, bb):
       tileim.save(out, format='PNG', transparency=white)
       data = out.getvalue()
       out.close()
-      with open('/tmp/%s.png'%name, 'wb') as f:
-        f.write(data)
+      persister.add_data(data, name)
 
 if __name__ == '__main__':
   main()
